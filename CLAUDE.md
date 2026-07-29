@@ -97,11 +97,15 @@ always check per-job conclusions (`gh run view <id> --json jobs`).
 
 ## Roadmap (agreed 2026-07-29)
 
-- **0.1** — current scope: engine, `NetteDatabase` + `Mysql` formats,
+- **0.1** (tagged 2026-07-29) — engine, `NetteDatabase` + `Mysql` formats,
   `#[Name]` + `#[Type\Date]`, streaming data sets.
-- **0.2** — `Json` format (camelCase convention, date-time ↔ RFC 3339 with
-  foreign-offset recalculation, date ↔ `Y-m-d`; interval representation to
-  be decided there).
+- **0.2** (implemented 2026-07-29) — `Json` format: IdentityConverter
+  (camelCase as-is), date-time ↔ RFC 3339 with foreign-offset
+  recalculation, date ↔ `Y-m-d`, strict native booleans, and the deferred
+  interval decision: **ISO 8601 duration** (`PT12M30S`, inverted with a
+  leading `-`, fractional seconds supported — DateInterval cannot parse
+  them, so the format extracts them manually). Json deliberately does NOT
+  implement DatabaseFormat, so database-scoped attributes skip it.
 - **0.3** — nested structs (per-format contract: string in DB, nested
   object in JSON) and a general extension point for custom value types.
 - Later: composite keys, more `Type\*` attributes as needed.

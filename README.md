@@ -91,6 +91,7 @@ A *format* describes how values are represented in data: the field naming conven
 
 - `Format\NetteDatabase` — for nette/database, which already converts values on both sides: instances pass through, booleans stay booleans. `fromDataSet()` auto-detects the primary key of a `Selection` (duck-typed, no hard dependency).
 - `Format\Mysql` — for raw PDO/mysqli: date-times as `'Y-m-d H:i:s'`, dates as `'Y-m-d'`, booleans as `0`/`1`, TIME as `'HH:MM:SS'` strings.
+- `Format\Json` — for decoded JSON payloads (APIs): property names as-is (camelCase), date-times as RFC 3339 (a foreign offset is recalculated into the app time zone), dates as `'Y-m-d'`, native booleans, intervals as ISO 8601 durations (`'PT12M30S'`).
 
 Custom format = subclass:
 
