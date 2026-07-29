@@ -1,0 +1,501 @@
+<?php
+
+declare(strict_types=1);
+
+namespace JakubBoucek\Hydrator;
+
+use BackedEnum;
+use DateInterval;
+use DateTimeImmutable;
+use DateTimeInterface;
+use DateTimeZone;
+use Generator;
+use JakubBoucek\Hydrator\Attribute\Name;
+use JakubBoucek\Hydrator\Attribute\Type;
+use JakubBoucek\Hydrator\Exception\HydrationException;
+use JakubBoucek\Hydrator\Exception\ExtractionException;
+use JakubBoucek\Hydrator\Exception\InvalidEntityException;
+use JakubBoucek\Hydrator\Exception\MetadataException;
+use JakubBoucek\Hydrator\Exception\ValidationException;
+use JakubBoucek\Hydrator\Exception\ValueException;
+use JakubBoucek\Hydrator\Format\Format;
+use JakubBoucek\Hydrator\Metadata\PropertySlot;
+use JakubBoucek\Hydrator\Metadata\ValueKind;
+use PropertyHookType;
+use ReflectionClass;
+use ReflectionEnum;
+use ReflectionNamedType;
+use ReflectionProperty;
+use Throwable;
+use Traversable;
+use ValueError;
+
+/**
+ * Bidirectional mapper between one entity class and its data representation
+ * in one format. Property metadata (field names, logical kinds, reflections)
+ * is built once and cached; per-row work is a plain loop. The library never
+ * caches data or entities — that is the application's domain.
+ *
+ * @template T of object
+ */
+final class Hydrator
+{
+    private readonly Format $format;
+
+    private readonly DateTimeZone $timeZone;
+
+    /** @var array<string, PropertySlot> */
+    private array $slots;
+
+    /**
+     * @param class-string<T> $entityClass
+     * @param class-string<Format> $format
+     * @param DateTimeZone|null $timeZone Application time zone injected into
+     *   every hydrated date-time; defaults to the PHP default time zone.
+     */
+    public function __construct(
+        private readonly string $entityClass,
+        string $format,
+        ?DateTimeZone $timeZone = null,
+    ) {
+        if (!class_exists($entityClass)) {
+            throw new MetadataException("Entity class '{$entityClass}' does not exist.");
+        }
+        if (!is_a($format, Format::class, true)) {
+            throw new MetadataException("Format '{$format}' must extend " . Format::class . '.');
+        }
+
+        $this->format = new $format();
+        $this->timeZone = $timeZone ?? new DateTimeZone(date_default_timezone_get());
+    }
+
+    /**
+     * Hydrates one data record into a new (or provided) entity instance.
+     *
+     * @param iterable<string, mixed> $data
+     * @param T|null $into Existing instance to re-hydrate into.
+     * @return T
+     */
+    public function fromData(iterable $data, ?object $into = null): object
+    {
+        $row = is_array($data) ? $data : iterator_to_array($data);
+
+        if ($into !== null && !$into instanceof $this->entityClass) {
+            throw new InvalidEntityException(
+                "Target instance must be a '{$this->entityClass}', got '" . $into::class . "'.",
+            );
+        }
+
+        /** @var T $entity */
+        $entity = $into ?? new $this->entityClass();
+
+        foreach ($this->slots() as $name => $slot) {
+            if (!$slot->writable) {
+                continue;
+            }
+
+            if (!array_key_exists($slot->fieldName, $row)) {
+                throw new HydrationException(
+                    "Missing field '{$slot->fieldName}' in data for property {$this->entityClass}::\${$name}.",
+                );
+            }
+
+            $value = $row[$slot->fieldName];
+
+            if ($value === null) {
+                if ($slot->nullable) {
+                    $entity->$name = null;
+                    continue;
+                }
+                if ($slot->hasDefault) {
+                    continue;
+                }
+                throw new HydrationException(
+                    "Field '{$slot->fieldName}' is null but property {$this->entityClass}::\${$name} is not nullable.",
+                );
+            }
+
+            try {
+                $entity->$name = match ($slot->kind) {
+                    ValueKind::Int => (int) $value, // @phpstan-ignore cast.int
+                    ValueKind::Float => (float) $value, // @phpstan-ignore cast.double
+                    ValueKind::String => $this->importString($value),
+                    ValueKind::Bool => $this->format->importBool($value),
+                    ValueKind::DateTime => $this->asDeclaredClass(
+                        $this->format->importDateTime($value, $this->timeZone),
+                        $slot->type,
+                    ),
+                    ValueKind::Date => $this->asDeclaredClass(
+                        $this->format->importDate($value, $this->timeZone),
+                        $slot->type,
+                    ),
+                    ValueKind::Interval => $this->format->importInterval($value),
+                    ValueKind::Enum => $this->importEnum($value, $slot),
+                    ValueKind::Mixed => $value,
+                };
+            } catch (ValueException | ValueError $e) {
+                throw new HydrationException(
+                    "Cannot hydrate property {$this->entityClass}::\${$name} from field"
+                    . " '{$slot->fieldName}': {$e->getMessage()}",
+                    previous: $e,
+                );
+            }
+        }
+
+        return $entity;
+    }
+
+    /**
+     * Hydrates a stream of data records. Stream-first: returns a lazy,
+     * single-pass generator, nothing is buffered. Keys: explicit `$keyBy`
+     * field, or the format's auto-detection (table primary key on a Nette
+     * Selection), or sequential.
+     *
+     * @param iterable<mixed> $dataSet
+     * @return Generator<int|string, T>
+     */
+    public function fromDataSet(iterable $dataSet, ?string $keyBy = null): Generator
+    {
+        $keyBy ??= $this->format->detectKeyField($dataSet);
+
+        foreach ($dataSet as $data) {
+            if (!is_iterable($data)) {
+                throw new HydrationException(
+                    'Data set item must be an array or Traversable, got ' . get_debug_type($data) . '.',
+                );
+            }
+            /** @var iterable<string, mixed> $data */
+            $row = is_array($data) ? $data : iterator_to_array($data);
+
+            if ($keyBy === null) {
+                yield $this->fromData($row);
+                continue;
+            }
+
+            if (!array_key_exists($keyBy, $row)) {
+                throw new HydrationException("Missing key field '{$keyBy}' in a data set item.");
+            }
+
+            /** @var int|string $key */
+            $key = $row[$keyBy];
+            yield $key => $this->fromData($row);
+        }
+    }
+
+    /**
+     * Extracts the entity to data. Partial-update semantics: only initialized
+     * properties are extracted, an uninitialized property has no field in the
+     * result. Date/interval representation is up to the format (instances for
+     * NetteDatabase, strings for Mysql).
+     *
+     * @param T $entity
+     * @return array<string, mixed>
+     */
+    public function toData(object $entity): array
+    {
+        $this->assertEntity($entity);
+
+        $data = [];
+
+        foreach ($this->slots() as $name => $slot) {
+            if (!$slot->readable || !$slot->reflection->isInitialized($entity)) {
+                continue;
+            }
+
+            $value = $entity->$name;
+
+            if ($value === null) {
+                $data[$slot->fieldName] = null;
+                continue;
+            }
+
+            try {
+                $data[$slot->fieldName] = match ($slot->kind) {
+                    ValueKind::Bool => $this->format->exportBool($this->expectBool($value)),
+                    ValueKind::DateTime => $this->format->exportDateTime($this->expectDateTime($value), $this->timeZone),
+                    ValueKind::Date => $this->format->exportDate($this->expectDateTime($value), $this->timeZone),
+                    ValueKind::Interval => $this->format->exportInterval($this->expectInterval($value)),
+                    ValueKind::Enum => $this->expectEnum($value)->value,
+                    default => $value,
+                };
+            } catch (ValueException $e) {
+                throw new ExtractionException(
+                    "Cannot extract property {$this->entityClass}::\${$name}: {$e->getMessage()}",
+                    previous: $e,
+                );
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Whether every non-nullable property (without a default value) is
+     * initialized — typically checked before an INSERT.
+     *
+     * @param T $entity
+     */
+    public function isComplete(object $entity): bool
+    {
+        return $this->uninitializedProperties($entity) === [];
+    }
+
+    /**
+     * Validates the entity: the completeness check first, then the entity's
+     * own rules when it implements SelfValidating.
+     *
+     * @param T $entity
+     * @throws ValidationException
+     */
+    public function validate(object $entity): void
+    {
+        $missing = $this->uninitializedProperties($entity);
+        if ($missing !== []) {
+            throw new ValidationException(
+                "Entity {$this->entityClass} is incomplete, uninitialized non-nullable"
+                . ' properties: $' . implode(', $', $missing) . '.',
+            );
+        }
+
+        if ($entity instanceof SelfValidating) {
+            $entity->validate();
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function uninitializedProperties(object $entity): array
+    {
+        $this->assertEntity($entity);
+
+        $missing = [];
+        foreach ($this->slots() as $name => $slot) {
+            if ($slot->reflection->isVirtual() || $slot->nullable || $slot->hasDefault) {
+                continue;
+            }
+            if (!$slot->reflection->isInitialized($entity)) {
+                $missing[] = $name;
+            }
+        }
+
+        return $missing;
+    }
+
+    private function assertEntity(object $entity): void
+    {
+        if (!$entity instanceof $this->entityClass) {
+            throw new InvalidEntityException(
+                "Entity must be an instance of '{$this->entityClass}', got '" . $entity::class . "'.",
+            );
+        }
+    }
+
+    private function expectBool(mixed $value): bool
+    {
+        return is_bool($value)
+            ? $value
+            : throw new ValueException('Expected bool, got ' . get_debug_type($value) . '.');
+    }
+
+    private function expectDateTime(mixed $value): DateTimeImmutable
+    {
+        return $value instanceof DateTimeImmutable
+            ? $value
+            : throw new ValueException('Expected DateTimeImmutable, got ' . get_debug_type($value) . '.');
+    }
+
+    private function expectInterval(mixed $value): DateInterval
+    {
+        return $value instanceof DateInterval
+            ? $value
+            : throw new ValueException('Expected DateInterval, got ' . get_debug_type($value) . '.');
+    }
+
+    private function expectEnum(mixed $value): BackedEnum
+    {
+        return $value instanceof BackedEnum
+            ? $value
+            : throw new ValueException('Expected BackedEnum, got ' . get_debug_type($value) . '.');
+    }
+
+    private function importString(mixed $value): string
+    {
+        if (is_scalar($value) || $value instanceof \Stringable) {
+            return (string) $value;
+        }
+
+        throw new ValueException('Expected string-like value, got ' . get_debug_type($value) . '.');
+    }
+
+    private function importEnum(mixed $value, PropertySlot $slot): BackedEnum
+    {
+        if (!is_int($value) && !is_string($value)) {
+            throw new ValueException('Expected enum backing value, got ' . get_debug_type($value) . '.');
+        }
+
+        /** @var class-string<BackedEnum> $enum */
+        $enum = $slot->type;
+
+        // DB layers may return backing values as strings (raw PDO), cast first
+        return $enum::from($slot->enumBackedByInt ? (int) $value : (string) $value);
+    }
+
+    private function asDeclaredClass(DateTimeImmutable $value, string $class): DateTimeImmutable
+    {
+        if ($class === DateTimeImmutable::class || $value instanceof $class) {
+            return $value;
+        }
+
+        /** @var class-string<DateTimeImmutable> $class */
+        return $class::createFromInterface($value);
+    }
+
+    /**
+     * @return array<string, PropertySlot>
+     */
+    private function slots(): array
+    {
+        return $this->slots ??= $this->buildSlots();
+    }
+
+    /**
+     * @return array<string, PropertySlot>
+     */
+    private function buildSlots(): array
+    {
+        $slots = [];
+
+        $properties = new ReflectionClass($this->entityClass)->getProperties(ReflectionProperty::IS_PUBLIC);
+        foreach ($properties as $property) {
+            if ($property->isStatic()) {
+                continue;
+            }
+            $slots[$property->getName()] = $this->buildSlot($property);
+        }
+
+        return $slots;
+    }
+
+    private function buildSlot(ReflectionProperty $property): PropertySlot
+    {
+        $name = $property->getName();
+        $type = $property->getType();
+
+        if ($type !== null && !$type instanceof ReflectionNamedType) {
+            throw new MetadataException(
+                "Only simple types are supported, property {$this->entityClass}::\${$name}"
+                . ' has a union or intersection type.',
+            );
+        }
+
+        $kind = $this->resolveKind($property, $type);
+
+        // Writable: no restricted setter, and a virtual property only with a set hook
+        $writable = !$property->isReadOnly()
+            && !$property->isProtectedSet()
+            && !$property->isPrivateSet()
+            && (!$property->isVirtual() || $property->hasHook(PropertyHookType::Set));
+        $readable = !$property->isVirtual();
+
+        $enumBackedByInt = false;
+        if ($kind === ValueKind::Enum) {
+            /** @var class-string<BackedEnum> $enumClass */
+            $enumClass = $type?->getName() ?? '';
+            $backingType = new ReflectionEnum($enumClass)->getBackingType();
+            $enumBackedByInt = $backingType instanceof ReflectionNamedType && $backingType->getName() === 'int';
+        }
+
+        return new PropertySlot(
+            name: $name,
+            fieldName: $this->resolveFieldName($property),
+            kind: $kind,
+            type: $type?->getName() ?? 'mixed',
+            enumBackedByInt: $enumBackedByInt,
+            nullable: $type?->allowsNull() ?? true,
+            hasDefault: $property->hasDefaultValue(),
+            writable: $writable,
+            readable: $readable,
+            reflection: $property,
+        );
+    }
+
+    private function resolveKind(ReflectionProperty $property, ?ReflectionNamedType $type): ValueKind
+    {
+        $name = $property->getName();
+        $isDate = $property->getAttributes(Type\Date::class) !== [];
+
+        $kind = match (true) {
+            $type === null, $type->getName() === 'mixed' => ValueKind::Mixed,
+            $type->isBuiltin() => match ($type->getName()) {
+                'int' => ValueKind::Int,
+                'float' => ValueKind::Float,
+                'string' => ValueKind::String,
+                'bool' => ValueKind::Bool,
+                default => throw new MetadataException(
+                    "Unsupported property type '{$type->getName()}' for {$this->entityClass}::\${$name}.",
+                ),
+            },
+            is_a($type->getName(), DateTimeImmutable::class, true) => ValueKind::DateTime,
+            is_a($type->getName(), DateInterval::class, true) => ValueKind::Interval,
+            is_subclass_of($type->getName(), BackedEnum::class) => ValueKind::Enum,
+            is_a($type->getName(), DateTimeInterface::class, true) => throw new MetadataException(
+                "Mutable date-time type '{$type->getName()}' is not supported for"
+                . " {$this->entityClass}::\${$name}, use DateTimeImmutable.",
+            ),
+            default => throw new MetadataException(
+                "Unsupported property type '{$type->getName()}' for {$this->entityClass}::\${$name}.",
+            ),
+        };
+
+        if ($isDate) {
+            if ($kind !== ValueKind::DateTime) {
+                throw new MetadataException(
+                    '#[Type\Date] is only allowed on DateTimeImmutable properties,'
+                    . " found on {$this->entityClass}::\${$name}.",
+                );
+            }
+            return ValueKind::Date;
+        }
+
+        return $kind;
+    }
+
+    private function resolveFieldName(ReflectionProperty $property): string
+    {
+        $name = $property->getName();
+        $matched = null;
+        $catchAllSeen = false;
+
+        foreach ($property->getAttributes(Name::class) as $attribute) {
+            if ($catchAllSeen) {
+                throw new MetadataException(
+                    "Unreachable #[Name] attribute on {$this->entityClass}::\${$name}:"
+                    . ' declared after a catch-all #[Name] without format scope.',
+                );
+            }
+
+            $nameAttribute = $attribute->newInstance();
+
+            if ($nameAttribute->formats === []) {
+                $catchAllSeen = true;
+                $matched ??= $nameAttribute->name;
+                continue;
+            }
+
+            foreach ($nameAttribute->formats as $scope) {
+                if (!class_exists($scope) && !interface_exists($scope)) {
+                    throw new MetadataException(
+                        "Unknown format scope '{$scope}' in #[Name] attribute"
+                        . " on {$this->entityClass}::\${$name}.",
+                    );
+                }
+                if ($matched === null && $this->format instanceof $scope) {
+                    $matched = $nameAttribute->name;
+                }
+            }
+        }
+
+        return $matched ?? $this->format->fieldName($name);
+    }
+}

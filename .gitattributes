@@ -1,0 +1,9 @@
+* text=auto
+
+.gitattributes export-ignore
+.github export-ignore
+.gitignore export-ignore
+CLAUDE.md export-ignore
+docker-compose.yml export-ignore
+phpstan.neon export-ignore
+tests export-ignore

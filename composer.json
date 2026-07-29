@@ -1,0 +1,49 @@
+{
+    "name": "jakubboucek/hydrator",
+    "description": "Fast bidirectional hydrator between typed PHP entities and database rows or other data formats, built for modern PHP with property hooks support",
+    "license": "MIT",
+    "type": "library",
+    "keywords": [
+        "hydrator",
+        "hydration",
+        "entity",
+        "mapping",
+        "database",
+        "nette"
+    ],
+    "authors": [
+        {
+            "name": "Jakub Bouček",
+            "email": "pan@jakubboucek.cz"
+        }
+    ],
+    "require": {
+        "php": "~8.4"
+    },
+    "require-dev": {
+        "ext-pdo_sqlite": "*",
+        "nette/database": "^3.2.4",
+        "nette/tester": "^2.5",
+        "phpstan/phpstan": "^2.1"
+    },
+    "suggest": {
+        "nette/database": "Seamless hydration of Row, ActiveRow and Selection with the NetteDatabase format"
+    },
+    "autoload": {
+        "psr-4": {
+            "JakubBoucek\\Hydrator\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "JakubBoucek\\Hydrator\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "scripts": {
+        "phpstan": "phpstan analyze -c phpstan.neon",
+        "test": "tester tests -s -C"
+    }
+}

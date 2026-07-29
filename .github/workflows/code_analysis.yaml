@@ -1,0 +1,42 @@
+name: Code Analysis
+
+on:
+    pull_request:
+    push:
+
+jobs:
+    matrix:
+        strategy:
+            fail-fast: false
+            matrix:
+                php: ['8.4', '8.5']
+                versions:
+                    - name: highest
+                      arg: highest
+                      experimental: false
+                    - name: lowest
+                      arg: lowest
+                      experimental: true
+                actions:
+                    - name: PHPStan
+                      run: composer run phpstan
+                    - name: Unit tests
+                      run: composer run test
+
+        runs-on: ubuntu-latest
+        continue-on-error: ${{ matrix.versions.experimental }}
+        name: ${{ matrix.actions.name }} at PHP ${{ matrix.php }} (${{ matrix.versions.name }})
+
+        steps:
+            - uses: actions/checkout@v5
+
+            - uses: shivammathur/setup-php@v2
+              with:
+                  php-version: ${{ matrix.php }}
+                  coverage: none
+
+            - uses: ramsey/composer-install@v3
+              with:
+                  dependency-versions: ${{ matrix.versions.arg }}
+
+            - run: ${{ matrix.actions.run }}
