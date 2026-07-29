@@ -107,12 +107,54 @@ abstract class Format implements FormatScope
     abstract public function exportDate(DateTimeImmutable $value, DateTimeZone $timeZone): mixed;
 
     /**
+     * Intervals carry time-of-day semantics (the analogy of a database TIME
+     * column) — DateInterval is used on the PHP side only because PHP has no
+     * native type for a time without a date. String formats therefore always
+     * represent the value as `HH:MM:SS` (sign and hours over 24 allowed,
+     * fractional seconds kept), never as an ISO 8601 duration.
+     *
      * @throws ValueException
      */
-    abstract public function importInterval(mixed $value): DateInterval;
+    public function importInterval(mixed $value): DateInterval
+    {
+        if ($value instanceof DateInterval) {
+            return $value;
+        }
+
+        if (is_string($value) && preg_match('~^(-?)(\d+):(\d{1,2}):(\d{1,2})(\.\d+)?$~D', $value, $m)) {
+            $interval = new DateInterval("PT{$m[2]}H{$m[3]}M{$m[4]}S");
+            $interval->f = isset($m[5]) ? (float) $m[5] : 0.0;
+            $interval->invert = (int) (bool) $m[1];
+            return $interval;
+        }
+
+        throw new ValueException(
+            'Expected time string (HH:MM:SS) or DateInterval, got '
+            . (is_string($value) ? "'{$value}'" : get_debug_type($value)) . '.',
+        );
+    }
 
     /**
      * @throws ValueException
      */
-    abstract public function exportInterval(DateInterval $value): mixed;
+    public function exportInterval(DateInterval $value): mixed
+    {
+        if ($value->y !== 0 || $value->m !== 0) {
+            throw new ValueException('Cannot export an interval with a year or month part as time.');
+        }
+
+        $time = sprintf(
+            '%s%02d:%02d:%02d',
+            $value->invert === 1 ? '-' : '',
+            $value->d * 24 + $value->h,
+            $value->i,
+            $value->s,
+        );
+
+        if ($value->f > 0.0) {
+            $time .= substr(rtrim(rtrim(sprintf('%.6F', $value->f), '0'), '.'), 1);
+        }
+
+        return $time;
+    }
 }

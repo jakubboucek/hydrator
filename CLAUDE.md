@@ -87,6 +87,13 @@ always check per-job conclusions (`gh run view <id> --json jobs`).
   set hook → hydrated only; backed with hooks → both ways (hooks apply);
   `private(set)`/`protected(set)`/`readonly` → extracted, never hydrated
   (their fields are not required in input data).
+- **Intervals are time-of-day, never durations** (decision 2026-07-29):
+  the Interval kind is the analogy of a database TIME column —
+  `DateInterval` is used on the PHP side only because PHP has no native
+  type for a time without a date. Every string format represents it as
+  `HH:MM:SS` (sign, hours over 24, fractional seconds), never as an
+  ISO 8601 duration; the shared codec lives in the Format base
+  (NetteDatabase overrides export to pass the instance through).
 - **Strictness**: missing field, null into non-nullable, wrong value type →
   `HydrationException` with `Class::$property` + field context. Value
   codecs in formats throw `ValueException`; the engine wraps it with
@@ -101,11 +108,9 @@ always check per-job conclusions (`gh run view <id> --json jobs`).
   `#[Name]` + `#[Type\Date]`, streaming data sets.
 - **0.2** (implemented 2026-07-29) — `Json` format: IdentityConverter
   (camelCase as-is), date-time ↔ RFC 3339 with foreign-offset
-  recalculation, date ↔ `Y-m-d`, strict native booleans, and the deferred
-  interval decision: **ISO 8601 duration** (`PT12M30S`, inverted with a
-  leading `-`, fractional seconds supported — DateInterval cannot parse
-  them, so the format extracts them manually). Json deliberately does NOT
-  implement DatabaseFormat, so database-scoped attributes skip it.
+  recalculation, date ↔ `Y-m-d`, strict native booleans, times as
+  `HH:MM:SS`. Json deliberately does NOT implement DatabaseFormat, so
+  database-scoped attributes skip it.
 - **0.3** — nested structs (per-format contract: string in DB, nested
   object in JSON) and a general extension point for custom value types.
 - Later: composite keys, more `Type\*` attributes as needed.

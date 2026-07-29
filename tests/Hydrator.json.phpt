@@ -23,7 +23,7 @@ function jsonData(): array
         'published' => true,
         'createdAt' => '2026-07-29T10:30:00+00:00',
         'publishedOn' => '2026-07-01',
-        'readingTime' => 'PT12M30S',
+        'readingTime' => '00:12:30',
         'status' => 'published',
         'level' => 2,
         'viewCount' => 3,
@@ -55,23 +55,23 @@ test('extracts to JSON representation', function () use ($prague): void {
 
     Assert::same('2026-07-29T12:30:00+02:00', $data['createdAt']);
     Assert::same('2026-07-01', $data['publishedOn']);
-    Assert::same('PT12M30S', $data['readingTime']);
+    Assert::same('00:12:30', $data['readingTime']);
     Assert::true($data['published']);
     Assert::same('published', $data['status']);
     Assert::same(2, $data['level']);
     Assert::same(['a' => 1], $data['rawMeta']);
 });
 
-test('ISO 8601 durations survive the roundtrip', function () use ($prague): void {
+test('time strings survive the roundtrip (time-of-day semantics, like DB TIME)', function () use ($prague): void {
     $hydrator = new Hydrator(Article::class, Json::class, $prague);
 
-    foreach (['P1DT2H', '-PT120H5M1S', 'PT1M30.25S', '-P2Y3M4DT5H6M7.5S', 'PT0S'] as $duration) {
-        $data = ['readingTime' => $duration] + jsonData();
+    foreach (['00:12:30', '-120:05:01', '00:01:30.25', '838:59:59'] as $time) {
+        $data = ['readingTime' => $time] + jsonData();
         $article = $hydrator->fromData($data);
-        Assert::same($duration, $hydrator->toData($article)['readingTime'], "roundtrip of {$duration}");
+        Assert::same($time, $hydrator->toData($article)['readingTime'], "roundtrip of {$time}");
     }
 
-    $inverted = $hydrator->fromData(['readingTime' => '-PT1H'] + jsonData());
+    $inverted = $hydrator->fromData(['readingTime' => '-01:00:00'] + jsonData());
     Assert::same(1, $inverted->readingTime->invert);
     Assert::same(1, $inverted->readingTime->h);
 });
@@ -86,13 +86,13 @@ test('JSON booleans are strict', function () use ($prague): void {
     );
 });
 
-test('invalid duration is rejected with context', function () use ($prague): void {
+test('invalid time string is rejected with context', function () use ($prague): void {
     $hydrator = new Hydrator(Article::class, Json::class, $prague);
 
     Assert::exception(
-        fn() => $hydrator->fromData(['readingTime' => '12:30'] + jsonData()),
+        fn() => $hydrator->fromData(['readingTime' => 'PT12M30S'] + jsonData()),
         HydrationException::class,
-        "~Cannot hydrate property .*::\\\$readingTime.*Invalid ISO 8601 duration '12:30'~",
+        '~Cannot hydrate property .*::\\$readingTime.*Expected time string~',
     );
 });
 
