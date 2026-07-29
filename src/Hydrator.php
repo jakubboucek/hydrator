@@ -143,6 +143,10 @@ final class Hydrator
                         $this->format->importDate($value, $this->timeZone),
                         $slot->type,
                     ),
+                    ValueKind::Time => $this->asDeclaredDateTime(
+                        $this->format->importTime($value, $this->timeZone),
+                        $slot->type,
+                    ),
                     ValueKind::Interval => $this->format->importInterval($value),
                     ValueKind::Enum => $this->importEnum($value, $slot),
                     ValueKind::Mixed => $value,
@@ -228,6 +232,7 @@ final class Hydrator
                     ValueKind::Bool => $this->format->exportBool($this->expectBool($value)),
                     ValueKind::DateTime => $this->format->exportDateTime($this->expectDateTime($value), $this->timeZone),
                     ValueKind::Date => $this->format->exportDate($this->expectDateTime($value), $this->timeZone),
+                    ValueKind::Time => $this->format->exportTime($this->expectDateTime($value), $this->timeZone),
                     ValueKind::Interval => $this->format->exportInterval($this->expectInterval($value)),
                     ValueKind::Enum => $this->expectEnum($value)->value,
                     default => $value,
@@ -385,6 +390,14 @@ final class Hydrator
     {
         $name = $property->getName();
         $isDate = $property->getAttributes(Type\Date::class) !== [];
+        $isTime = $property->getAttributes(Type\Time::class) !== [];
+
+        if ($isDate && $isTime) {
+            throw new MetadataException(
+                '#[Type\Date] and #[Type\Time] cannot be combined'
+                . " on {$this->entityClass}::\${$name}.",
+            );
+        }
 
         $kind = match (true) {
             $type === null, $type->getName() === 'mixed' => ValueKind::Mixed,
@@ -409,17 +422,19 @@ final class Hydrator
             ),
         };
 
-        if ($isDate) {
-            if ($kind !== ValueKind::DateTime) {
-                throw new MetadataException(
-                    '#[Type\Date] is only allowed on DateTimeImmutable properties,'
-                    . " found on {$this->entityClass}::\${$name}.",
-                );
-            }
-            return ValueKind::Date;
+        if (($isDate || $isTime) && $kind !== ValueKind::DateTime) {
+            $attribute = $isDate ? 'Date' : 'Time';
+            throw new MetadataException(
+                "#[Type\\{$attribute}] is only allowed on DateTimeImmutable properties,"
+                . " found on {$this->entityClass}::\${$name}.",
+            );
         }
 
-        return $kind;
+        return match (true) {
+            $isDate => ValueKind::Date,
+            $isTime => ValueKind::Time,
+            default => $kind,
+        };
     }
 
     private function resolveFieldName(ReflectionProperty $property): string

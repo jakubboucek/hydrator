@@ -7,6 +7,7 @@ namespace JakubBoucek\Hydrator\Format;
 use DateInterval;
 use DateTimeImmutable;
 use DateTimeZone;
+use JakubBoucek\Hydrator\Exception\ValueException;
 use Throwable;
 
 /**
@@ -39,6 +40,35 @@ class NetteDatabase extends Mysql
     public function exportInterval(DateInterval $value): mixed
     {
         return $value;
+    }
+
+    /**
+     * Nette normalizes MySQL TIME columns to DateInterval, so a day-scoped
+     * `#[Type\Time]` property must accept it — within the day range only;
+     * beyond it (sign, hours over 23) a DateInterval property is the right
+     * mapping. Export stays the `H:i:s` string from the base: Nette writes
+     * DateTimeInterface values by PHP type as a full `Y-m-d H:i:s` string,
+     * which MySQL would only cast into TIME with a truncation note.
+     */
+    public function importTime(mixed $value, DateTimeZone $timeZone): DateTimeImmutable
+    {
+        if ($value instanceof DateInterval) {
+            if ($value->invert === 1 || $value->y !== 0 || $value->m !== 0 || $value->d * 24 + $value->h > 23) {
+                throw new ValueException(
+                    'TIME value is out of the day range (00:00:00 <= x < 24:00:00),'
+                    . ' use a DateInterval property for the full TIME domain.',
+                );
+            }
+
+            $time = sprintf('%02d:%02d:%02d', $value->h, $value->i, $value->s);
+            if ($value->f > 0.0) {
+                $time .= substr(rtrim(rtrim(sprintf('%.6F', $value->f), '0'), '.'), 1);
+            }
+
+            return parent::importTime($time, $timeZone);
+        }
+
+        return parent::importTime($value, $timeZone);
     }
 
     public function detectKeyField(iterable $dataSet): ?string

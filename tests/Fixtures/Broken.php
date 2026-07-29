@@ -27,6 +27,19 @@ class BrokenDateOnString implements Entity
     public string $createdAt;
 }
 
+class BrokenTimeOnString implements Entity
+{
+    #[Type\Time]
+    public string $startsAt;
+}
+
+class BrokenDateAndTime implements Entity
+{
+    #[Type\Date]
+    #[Type\Time]
+    public \DateTimeImmutable $moment;
+}
+
 class BrokenUnreachableName implements Entity
 {
     #[Name('catch_all')]

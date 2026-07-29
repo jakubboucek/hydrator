@@ -107,11 +107,63 @@ abstract class Format implements FormatScope
     abstract public function exportDate(DateTimeImmutable $value, DateTimeZone $timeZone): mixed;
 
     /**
-     * Intervals carry time-of-day semantics (the analogy of a database TIME
-     * column) — DateInterval is used on the PHP side only because PHP has no
-     * native type for a time without a date. String formats therefore always
-     * represent the value as `HH:MM:SS` (sign and hours over 24 allowed,
-     * fractional seconds kept), never as an ISO 8601 duration.
+     * Time-of-day values: DateTimeImmutable properties refined by
+     * `#[Type\Time]`, strictly day-scoped (00:00:00 <= x < 24:00:00 —
+     * enforced here, unlike the interval codec). The wall time is pinned to
+     * the date 0001-01-01 in the application time zone: the date predates
+     * DST rules, so every wall time on it exists exactly once and equal
+     * times are equal instants. Only the wall clock is meaningful, never
+     * the instant — no conversion between time zones happens.
+     *
+     * @throws ValueException
+     */
+    public function importTime(mixed $value, DateTimeZone $timeZone): DateTimeImmutable
+    {
+        if ($value instanceof DateTimeInterface) {
+            return new DateTimeImmutable('0001-01-01 ' . $value->format('H:i:s.u'), $timeZone);
+        }
+
+        if (is_string($value) && preg_match('~^(\d{1,2}):(\d{1,2}):(\d{1,2})(\.\d+)?$~D', $value, $m)) {
+            if ((int) $m[1] > 23 || (int) $m[2] > 59 || (int) $m[3] > 59) {
+                throw new ValueException(
+                    "Time value '{$value}' is out of the day range (00:00:00 <= x < 24:00:00),"
+                    . ' use a DateInterval property for the full TIME domain.',
+                );
+            }
+            return new DateTimeImmutable("0001-01-01 {$value}", $timeZone);
+        }
+
+        throw new ValueException(
+            is_string($value)
+                ? "Expected time-of-day string (HH:MM:SS), got '{$value}'."
+                : 'Expected time-of-day string or DateTimeInterface, got ' . get_debug_type($value) . '.',
+        );
+    }
+
+    /**
+     * The wall clock of the value itself; the time zone is never converted
+     * (a year-1 instant has no meaningful zone arithmetic).
+     */
+    public function exportTime(DateTimeImmutable $value, DateTimeZone $timeZone): mixed
+    {
+        $time = $value->format('H:i:s');
+
+        if ((int) $value->format('u') > 0) {
+            $time .= rtrim($value->format('.u'), '0');
+        }
+
+        return $time;
+    }
+
+    /**
+     * Intervals carry the full domain of a database TIME column — MySQL
+     * documents TIME as dual-purpose (time of day AND elapsed time), so
+     * sign and hours over 24 are legal — and DateInterval is used on the
+     * PHP side only because PHP has no native type for a time without a
+     * date. String formats therefore always represent the value as
+     * `HH:MM:SS` (sign and hours over 24 allowed, fractional seconds
+     * kept), never as an ISO 8601 duration. For the strictly day-scoped
+     * alternative see `#[Type\Time]` and the time codec above.
      *
      * @throws ValueException
      */

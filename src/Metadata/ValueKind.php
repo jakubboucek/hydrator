@@ -19,6 +19,7 @@ enum ValueKind
     case Enum;
     case DateTime;
     case Date;
+    case Time;
     case Interval;
     case Mixed;
 }
