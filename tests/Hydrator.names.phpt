@@ -81,6 +81,6 @@ test('metadata errors are rejected with clear messages', function (): void {
     Assert::exception(
         fn() => new Hydrator(BrokenUnknownScope::class, Mysql::class)->fromData([]),
         MetadataException::class,
-        '~Unknown format scope~',
+        '~Invalid format scope~',
     );
 });

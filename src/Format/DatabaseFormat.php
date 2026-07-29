@@ -9,6 +9,6 @@ namespace JakubBoucek\Hydrator\Format;
  * scope: `#[Name('some__name', [DatabaseFormat::class])]` applies to all
  * database formats including future ones.
  */
-interface DatabaseFormat
+interface DatabaseFormat extends FormatScope
 {
 }

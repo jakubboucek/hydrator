@@ -6,7 +6,7 @@ use JakubBoucek\Hydrator\Format\Mysql;
 use JakubBoucek\Hydrator\Format\NetteDatabase;
 use JakubBoucek\Hydrator\HydratorFactory;
 use JakubBoucek\Hydrator\Tests\Fixtures\Article;
-use JakubBoucek\Hydrator\Tests\Fixtures\ValidatedEntity;
+use JakubBoucek\Hydrator\Tests\Fixtures\SimpleEntity;
 use Tester\Assert;
 
 require __DIR__ . '/bootstrap.php';
@@ -19,7 +19,7 @@ test('factory caches hydrators per entity class and format', function (): void {
     Assert::same($first, $factory->for(Article::class, NetteDatabase::class));
 
     Assert::notSame($first, $factory->for(Article::class, Mysql::class));
-    Assert::notSame($first, $factory->for(ValidatedEntity::class));
+    Assert::notSame($first, $factory->for(SimpleEntity::class));
 });
 
 test('the preferred format is used when none is requested', function (): void {

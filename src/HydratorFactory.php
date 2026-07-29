@@ -14,7 +14,7 @@ use JakubBoucek\Hydrator\Format\Format;
  */
 final class HydratorFactory
 {
-    /** @var array<string, Hydrator<object>> */
+    /** @var array<string, Hydrator<covariant Entity>> */
     private array $hydrators = [];
 
     /**
@@ -33,7 +33,7 @@ final class HydratorFactory
      * Returns the (cached) Hydrator of the entity class, in the preferred
      * format or an explicitly requested one.
      *
-     * @template T of object
+     * @template T of Entity
      * @param class-string<T> $entityClass
      * @param class-string<Format>|null $format
      * @return Hydrator<T>

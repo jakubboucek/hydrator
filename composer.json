@@ -22,8 +22,8 @@
     },
     "require-dev": {
         "ext-pdo_sqlite": "*",
-        "nette/database": "^3.2.4",
-        "nette/tester": "^2.5",
+        "nette/database": "^3.2.9",
+        "nette/tester": "^2.6",
         "phpstan/phpstan": "^2.1"
     },
     "suggest": {

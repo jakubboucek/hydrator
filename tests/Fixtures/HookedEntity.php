@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace JakubBoucek\Hydrator\Tests\Fixtures;
 
-class HookedEntity
+use JakubBoucek\Hydrator\Entity;
+
+class HookedEntity implements Entity
 {
     public int $id;
     public string $firstName;

@@ -6,7 +6,7 @@ use JakubBoucek\Hydrator\Exception\HydrationException;
 use JakubBoucek\Hydrator\Format\Mysql;
 use JakubBoucek\Hydrator\Format\NetteDatabase;
 use JakubBoucek\Hydrator\Hydrator;
-use JakubBoucek\Hydrator\Tests\Fixtures\ValidatedEntity;
+use JakubBoucek\Hydrator\Tests\Fixtures\SimpleEntity;
 use Tester\Assert;
 
 require __DIR__ . '/bootstrap.php';
@@ -41,7 +41,7 @@ class FakeSelection implements IteratorAggregate
 }
 
 test('fromDataSet is a lazy single-pass stream, nothing is buffered ahead', function (): void {
-    $hydrator = new Hydrator(ValidatedEntity::class, Mysql::class);
+    $hydrator = new Hydrator(SimpleEntity::class, Mysql::class);
 
     $consumed = 0;
     $source = (function () use (&$consumed) {
@@ -65,7 +65,7 @@ test('fromDataSet is a lazy single-pass stream, nothing is buffered ahead', func
 });
 
 test('explicit keyBy keys the stream by a data field', function (): void {
-    $hydrator = new Hydrator(ValidatedEntity::class, Mysql::class);
+    $hydrator = new Hydrator(SimpleEntity::class, Mysql::class);
 
     $entities = iterator_to_array($hydrator->fromDataSet(rows(), keyBy: 'id'));
 
@@ -74,7 +74,7 @@ test('explicit keyBy keys the stream by a data field', function (): void {
 });
 
 test('NetteDatabase format auto-detects the primary key via duck-typing', function (): void {
-    $hydrator = new Hydrator(ValidatedEntity::class, NetteDatabase::class);
+    $hydrator = new Hydrator(SimpleEntity::class, NetteDatabase::class);
 
     $entities = iterator_to_array($hydrator->fromDataSet(new FakeSelection(rows(), 'id')));
 
@@ -82,7 +82,7 @@ test('NetteDatabase format auto-detects the primary key via duck-typing', functi
 });
 
 test('composite primary key falls back to sequential keys', function (): void {
-    $hydrator = new Hydrator(ValidatedEntity::class, NetteDatabase::class);
+    $hydrator = new Hydrator(SimpleEntity::class, NetteDatabase::class);
 
     $entities = iterator_to_array($hydrator->fromDataSet(new FakeSelection(rows(), ['id', 'title'])));
 
@@ -90,7 +90,7 @@ test('composite primary key falls back to sequential keys', function (): void {
 });
 
 test('Mysql format has no auto-detection, keys are sequential', function (): void {
-    $hydrator = new Hydrator(ValidatedEntity::class, Mysql::class);
+    $hydrator = new Hydrator(SimpleEntity::class, Mysql::class);
 
     $entities = iterator_to_array($hydrator->fromDataSet(new FakeSelection(rows(), 'id')));
 
@@ -98,7 +98,7 @@ test('Mysql format has no auto-detection, keys are sequential', function (): voi
 });
 
 test('missing key field and invalid items throw', function (): void {
-    $hydrator = new Hydrator(ValidatedEntity::class, Mysql::class);
+    $hydrator = new Hydrator(SimpleEntity::class, Mysql::class);
 
     Assert::exception(
         fn() => iterator_to_array($hydrator->fromDataSet(rows(), keyBy: 'uuid')),

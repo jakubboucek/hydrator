@@ -9,23 +9,23 @@ use JakubBoucek\Hydrator\Format\Mysql;
 use JakubBoucek\Hydrator\Format\NetteDatabase;
 use JakubBoucek\Hydrator\Hydrator;
 use JakubBoucek\Hydrator\Tests\Fixtures\Article;
-use JakubBoucek\Hydrator\Tests\Fixtures\ValidatedEntity;
+use JakubBoucek\Hydrator\Tests\Fixtures\SimpleEntity;
 use Tester\Assert;
 
 require __DIR__ . '/bootstrap.php';
 
 test('missing field throws with property context', function (): void {
-    $hydrator = new Hydrator(ValidatedEntity::class, NetteDatabase::class);
+    $hydrator = new Hydrator(SimpleEntity::class, NetteDatabase::class);
 
     Assert::exception(
         fn() => $hydrator->fromData(['id' => 1, 'note' => null]),
         HydrationException::class,
-        "~Missing field 'title'.*ValidatedEntity::\\\$title~",
+        "~Missing field 'title'.*SimpleEntity::\\\$title~",
     );
 });
 
 test('null in a non-nullable property throws', function (): void {
-    $hydrator = new Hydrator(ValidatedEntity::class, NetteDatabase::class);
+    $hydrator = new Hydrator(SimpleEntity::class, NetteDatabase::class);
 
     Assert::exception(
         fn() => $hydrator->fromData(['id' => 1, 'title' => null, 'note' => null]),
@@ -92,15 +92,22 @@ test('invalid values are wrapped with property context', function (): void {
 });
 
 test('foreign instances are rejected', function (): void {
-    $hydrator = new Hydrator(ValidatedEntity::class, NetteDatabase::class);
+    $hydrator = new Hydrator(SimpleEntity::class, NetteDatabase::class);
 
+    // a different entity class: rejected by the hydrator with a clear message
     Assert::exception(
-        fn() => $hydrator->toData(new stdClass()),
+        fn() => $hydrator->toData(new Article()),
         InvalidEntityException::class,
+        '~must be an instance of .*SimpleEntity.*got .*Article~',
     );
     Assert::exception(
-        fn() => $hydrator->fromData(['id' => 1], into: new stdClass()),
+        fn() => $hydrator->fromData(['id' => 1], into: new Article()),
         InvalidEntityException::class,
+    );
+    // a non-entity object: rejected even earlier by the native Entity type
+    Assert::exception(
+        fn() => $hydrator->toData(new stdClass()), // @phpstan-ignore argument.type
+        TypeError::class,
     );
 });
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace JakubBoucek\Hydrator\Attribute;
 
 use Attribute;
+use JakubBoucek\Hydrator\Format\FormatScope;
 
 /**
  * Overrides the field name of a property in data.
@@ -20,9 +21,10 @@ final class Name
 {
     /**
      * @param string $name Field name in data.
-     * @param list<class-string> $formats Formats the override applies to, matched
-     *   by `instanceof` — a concrete format class, its ancestor or a family
-     *   marker interface (e.g. DatabaseFormat). Empty list = all formats.
+     * @param list<class-string<FormatScope>> $formats Formats the override
+     *   applies to, matched by `instanceof` — a concrete format class, its
+     *   ancestor or a family marker interface (e.g. DatabaseFormat). Empty
+     *   list = all formats.
      */
     public function __construct(
         public readonly string $name,

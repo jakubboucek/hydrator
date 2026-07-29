@@ -1,8 +1,18 @@
 services:
     php:
-        image: jakubboucek/lamp-devstack-php:8.4
+        image: jakubboucek/lamp-devstack-php:8.4-cli
         environment:
             TZ: Europe/Prague
-        restart: unless-stopped
+        working_dir: /var/www/html
         volumes:
             - ".:/var/www/html"
+
+    php85:
+        image: jakubboucek/lamp-devstack-php:8.5-cli
+        environment:
+            TZ: Europe/Prague
+        working_dir: /var/www/html
+        volumes:
+            - ".:/var/www/html"
+        profiles:
+            - php85

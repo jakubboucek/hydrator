@@ -28,14 +28,14 @@ jobs:
         name: ${{ matrix.actions.name }} at PHP ${{ matrix.php }} (${{ matrix.versions.name }})
 
         steps:
-            - uses: actions/checkout@v5
+            - uses: actions/checkout@v7
 
             - uses: shivammathur/setup-php@v2
               with:
                   php-version: ${{ matrix.php }}
                   coverage: none
 
-            - uses: ramsey/composer-install@v3
+            - uses: ramsey/composer-install@v4
               with:
                   dependency-versions: ${{ matrix.versions.arg }}
 

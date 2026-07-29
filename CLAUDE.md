@@ -8,21 +8,28 @@ infosoud-checker (branch `poc-own-hydrator`).
 ## Development environment — Docker only
 
 Never run PHP, Composer or MySQL locally on this machine — always through
-Docker (`jakubboucek/lamp-devstack-php`, see docker-compose.yml):
+Docker (`jakubboucek/lamp-devstack-php`, `-cli` variants, see
+docker-compose.yml). One-shot commands via `docker compose run --rm` (no
+long-running service needed; `exec` against a started service becomes
+useful once a MySQL service is added):
 
 ```shell
-docker compose up -d
-docker compose exec php composer install
-docker compose exec php composer test
-docker compose exec php composer phpstan
+docker compose run --rm php composer install
+docker compose run --rm php composer test
+docker compose run --rm php composer phpstan
+docker compose run --rm php85 composer test   # PHP 8.5 variant
 ```
 
-GitHub Actions run natively (no Docker needed there).
+GitHub Actions run natively (no Docker needed there). CI marks lowest-deps
+jobs `continue-on-error` — the run may look green while they fail, so
+always check per-job conclusions (`gh run view <id> --json jobs`).
 
 ## Architecture and terminology
 
-- **Entity** — any plain object with typed public properties; no base class,
-  no required attributes. Must be constructible without arguments.
+- **Entity** — a plain object with typed public properties implementing the
+  empty `Entity` marker interface (decision 2026-07-29: the marker exists to
+  reject foreign objects early and improve IDE hinting; no methods, no other
+  coupling). Must be constructible without arguments.
 - **Data** — the counterpart of the entity: an associative record
   (`array`/`Traversable` — Nette Row, ActiveRow, decoded JSON…). A key in
   Data is a **field**. Methods: `fromData()`, `fromDataSet()`, `toData()`.
@@ -48,16 +55,26 @@ GitHub Actions run natively (no Docker needed there).
   top-down, first match wins (like `match`); scopes match via `instanceof`
   (concrete class, ancestor or family interface) — so a format subclass
   inherits scopes of its parents. An attribute declared after an unscoped
-  catch-all → `MetadataException` (unreachable).
+  catch-all → `MetadataException` (unreachable). Scopes are typed
+  `class-string<FormatScope>` — a marker interface implemented by `Format`
+  and extended by family interfaces (`DatabaseFormat`); custom family
+  interfaces must extend `FormatScope` too.
 - **Time zone is an application property** (factory-level, not per-format):
   every hydrated date-time is normalized into it (instances converted,
   naive strings interpreted, foreign offsets recalculated). Defaults to
   `date_default_timezone_get()`. Extraction formats strings in it;
   pass-through formats hand instances back unchanged.
 - **Partial-update semantics**: extraction skips uninitialized properties
-  (initialized null → field null). Completeness is a separate explicit
-  check (`isComplete()`/`validate()` + `SelfValidating` interface), never
-  enforced by hydration/extraction.
+  (initialized null → field null). Completeness is never enforced by
+  hydration/extraction.
+- **No validation API** (removed 2026-07-29 after review): the earlier
+  `isComplete()`/`validate()`/`SelfValidating` conflated three different
+  material questions — insert-readiness (DB schema will accept the row),
+  read-safety (no uninitialized-property access on read) and domain rules —
+  each needing a different predicate, while partial-update makes
+  "uninitialized" a legitimate state with meaning (field untouched in DB).
+  Validation returns only when a concrete consumer use-case defines which
+  question is actually being asked.
 - **Hooks/visibility**: virtual get-only → skipped both ways; virtual with
   set hook → hydrated only; backed with hooks → both ways (hooks apply);
   `private(set)`/`protected(set)`/`readonly` → extracted, never hydrated
@@ -73,7 +90,7 @@ GitHub Actions run natively (no Docker needed there).
 ## Roadmap (agreed 2026-07-29)
 
 - **0.1** — current scope: engine, `NetteDatabase` + `Mysql` formats,
-  `#[Name]` + `#[Type\Date]`, streaming data sets, validation.
+  `#[Name]` + `#[Type\Date]`, streaming data sets.
 - **0.2** — `Json` format (camelCase convention, date-time ↔ RFC 3339 with
   foreign-offset recalculation, date ↔ `Y-m-d`; interval representation to
   be decided there).

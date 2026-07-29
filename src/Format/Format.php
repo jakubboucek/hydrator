@@ -22,7 +22,7 @@ use JakubBoucek\Hydrator\SnakeCaseConverter;
  * parents. Value codecs throw ValueException on invalid values; the engine
  * wraps it with the entity/property context.
  */
-abstract class Format
+abstract class Format implements FormatScope
 {
     private NameConverter $converter;
 

@@ -16,9 +16,9 @@ use JakubBoucek\Hydrator\Exception\HydrationException;
 use JakubBoucek\Hydrator\Exception\ExtractionException;
 use JakubBoucek\Hydrator\Exception\InvalidEntityException;
 use JakubBoucek\Hydrator\Exception\MetadataException;
-use JakubBoucek\Hydrator\Exception\ValidationException;
 use JakubBoucek\Hydrator\Exception\ValueException;
 use JakubBoucek\Hydrator\Format\Format;
+use JakubBoucek\Hydrator\Format\FormatScope;
 use JakubBoucek\Hydrator\Metadata\PropertySlot;
 use JakubBoucek\Hydrator\Metadata\ValueKind;
 use PropertyHookType;
@@ -36,7 +36,12 @@ use ValueError;
  * is built once and cached; per-row work is a plain loop. The library never
  * caches data or entities — that is the application's domain.
  *
- * @template T of object
+ * Field handling contract: a field missing in data for a writable property
+ * throws a HydrationException; extra fields in data with no matching
+ * property are silently ignored. Fields of non-writable properties
+ * (readonly, private(set), virtual get-only) are never required.
+ *
+ * @template T of Entity
  */
 final class Hydrator
 {
@@ -61,6 +66,11 @@ final class Hydrator
         if (!class_exists($entityClass)) {
             throw new MetadataException("Entity class '{$entityClass}' does not exist.");
         }
+        if (!is_subclass_of($entityClass, Entity::class)) {
+            throw new MetadataException(
+                "Entity class '{$entityClass}' must implement the " . Entity::class . ' marker interface.',
+            );
+        }
         if (!is_a($format, Format::class, true)) {
             throw new MetadataException("Format '{$format}' must extend " . Format::class . '.');
         }
@@ -72,11 +82,15 @@ final class Hydrator
     /**
      * Hydrates one data record into a new (or provided) entity instance.
      *
+     * Every writable property requires its field in data — a missing field
+     * throws a HydrationException. Extra fields with no matching property
+     * are silently ignored.
+     *
      * @param iterable<string, mixed> $data
      * @param T|null $into Existing instance to re-hydrate into.
      * @return T
      */
-    public function fromData(iterable $data, ?object $into = null): object
+    public function fromData(iterable $data, ?Entity $into = null): Entity
     {
         $row = is_array($data) ? $data : iterator_to_array($data);
 
@@ -121,11 +135,11 @@ final class Hydrator
                     ValueKind::Float => (float) $value, // @phpstan-ignore cast.double
                     ValueKind::String => $this->importString($value),
                     ValueKind::Bool => $this->format->importBool($value),
-                    ValueKind::DateTime => $this->asDeclaredClass(
+                    ValueKind::DateTime => $this->asDeclaredDateTime(
                         $this->format->importDateTime($value, $this->timeZone),
                         $slot->type,
                     ),
-                    ValueKind::Date => $this->asDeclaredClass(
+                    ValueKind::Date => $this->asDeclaredDateTime(
                         $this->format->importDate($value, $this->timeZone),
                         $slot->type,
                     ),
@@ -191,7 +205,7 @@ final class Hydrator
      * @param T $entity
      * @return array<string, mixed>
      */
-    public function toData(object $entity): array
+    public function toData(Entity $entity): array
     {
         $this->assertEntity($entity);
 
@@ -229,60 +243,7 @@ final class Hydrator
         return $data;
     }
 
-    /**
-     * Whether every non-nullable property (without a default value) is
-     * initialized — typically checked before an INSERT.
-     *
-     * @param T $entity
-     */
-    public function isComplete(object $entity): bool
-    {
-        return $this->uninitializedProperties($entity) === [];
-    }
-
-    /**
-     * Validates the entity: the completeness check first, then the entity's
-     * own rules when it implements SelfValidating.
-     *
-     * @param T $entity
-     * @throws ValidationException
-     */
-    public function validate(object $entity): void
-    {
-        $missing = $this->uninitializedProperties($entity);
-        if ($missing !== []) {
-            throw new ValidationException(
-                "Entity {$this->entityClass} is incomplete, uninitialized non-nullable"
-                . ' properties: $' . implode(', $', $missing) . '.',
-            );
-        }
-
-        if ($entity instanceof SelfValidating) {
-            $entity->validate();
-        }
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function uninitializedProperties(object $entity): array
-    {
-        $this->assertEntity($entity);
-
-        $missing = [];
-        foreach ($this->slots() as $name => $slot) {
-            if ($slot->reflection->isVirtual() || $slot->nullable || $slot->hasDefault) {
-                continue;
-            }
-            if (!$slot->reflection->isInitialized($entity)) {
-                $missing[] = $name;
-            }
-        }
-
-        return $missing;
-    }
-
-    private function assertEntity(object $entity): void
+    private function assertEntity(Entity $entity): void
     {
         if (!$entity instanceof $this->entityClass) {
             throw new InvalidEntityException(
@@ -341,7 +302,7 @@ final class Hydrator
         return $enum::from($slot->enumBackedByInt ? (int) $value : (string) $value);
     }
 
-    private function asDeclaredClass(DateTimeImmutable $value, string $class): DateTimeImmutable
+    private function asDeclaredDateTime(DateTimeImmutable $value, string $class): DateTimeImmutable
     {
         if ($class === DateTimeImmutable::class || $value instanceof $class) {
             return $value;
@@ -484,10 +445,15 @@ final class Hydrator
             }
 
             foreach ($nameAttribute->formats as $scope) {
-                if (!class_exists($scope) && !interface_exists($scope)) {
+                if (!is_string($scope)
+                    || (!class_exists($scope) && !interface_exists($scope))
+                    || !is_a($scope, FormatScope::class, true)
+                ) {
+                    $described = is_string($scope) ? "'{$scope}'" : get_debug_type($scope);
                     throw new MetadataException(
-                        "Unknown format scope '{$scope}' in #[Name] attribute"
-                        . " on {$this->entityClass}::\${$name}.",
+                        "Invalid format scope {$described} in #[Name] attribute"
+                        . " on {$this->entityClass}::\${$name}, expected a class-string of "
+                        . FormatScope::class . '.',
                     );
                 }
                 if ($matched === null && $this->format instanceof $scope) {

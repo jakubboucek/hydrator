@@ -2,7 +2,7 @@
 
 Fast bidirectional hydrator between typed PHP entities and database rows (or other data formats), built for modern PHP.
 
-Entities are plain data objects: typed public properties, [property hooks](https://www.php.net/manual/en/language.oop5.property-hooks.php), no base class, no magic getters/setters and no mandatory attributes. The hydrator maps them to and from associative data — a database row, a raw PDO result or any other representation described by a *format*.
+Entities are plain data objects: typed public properties, [property hooks](https://www.php.net/manual/en/language.oop5.property-hooks.php), no magic getters/setters and no mandatory attributes. The only contract is the empty `Entity` marker interface — it keeps the entity a plain object while letting the hydrator (and your IDE) refuse foreign objects early instead of failing later with confusing field-mismatch errors. The hydrator maps entities to and from associative data — a database row, a raw PDO result or any other representation described by a *format*.
 
 > [!WARNING]
 > The library is in development stage (0.x versions): the API may change between minor versions until it stabilizes.
@@ -57,8 +57,9 @@ The entity is a plain object:
 
 ```php
 use JakubBoucek\Hydrator\Attribute\Type;
+use JakubBoucek\Hydrator\Entity;
 
-class Article
+class Article implements Entity
 {
     public int $id;
     public string $title;
@@ -82,7 +83,7 @@ Property names map to field names by convention (camelCase ↔ snake_case by def
 
 ### Strictness
 
-A missing field in data, a `null` for a non-nullable property or a value of an unexpected type throws an exception with the entity class, property and field name in the message. All library exceptions implement the `JakubBoucek\Hydrator\Exception\HydratorException` marker interface.
+Every writable property requires its field in data: a missing field, a `null` for a non-nullable property or a value of an unexpected type throws an exception with the entity class, property and field name in the message. Extra fields in data with no matching property are silently ignored, and fields of non-writable properties (`readonly`, `private(set)`, virtual get-only) are never required. All library exceptions implement the `JakubBoucek\Hydrator\Exception\HydratorException` marker interface.
 
 ## Formats
 
@@ -124,30 +125,6 @@ class Legacy
 ```
 
 `#[Type\Date]` refines a `DateTimeImmutable` property to a date-only value (see above).
-
-## Validation
-
-Hydration never requires a complete entity (partial updates are a feature), so completeness is a separate, explicit check — typically before an `INSERT`:
-
-```php
-$articles->isComplete($entity);  // bool: all non-nullable properties initialized
-$articles->validate($entity);    // throws ValidationException
-```
-
-`validate()` also runs the entity's own rules when it implements the `SelfValidating` interface:
-
-```php
-class Article implements SelfValidating
-{
-    // ...
-    public function validate(): void
-    {
-        if ($this->title === '') {
-            throw new ValidationException('Title must not be empty.');
-        }
-    }
-}
-```
 
 ## Tests
 

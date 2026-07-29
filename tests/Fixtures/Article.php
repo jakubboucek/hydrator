@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace JakubBoucek\Hydrator\Tests\Fixtures;
 
+use JakubBoucek\Hydrator\Entity;
+
 use DateInterval;
 use DateTimeImmutable;
 use JakubBoucek\Hydrator\Attribute\Type;
 
-class Article
+class Article implements Entity
 {
     public int $id;
     public string $title;
