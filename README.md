@@ -14,7 +14,7 @@ General mapping libraries struggle with entities written in modern PHP style. Th
 - **Property hooks aware** — a virtual get-only property is skipped in both directions, a property with a set hook is writable, `private(set)`/`protected(set)`/`readonly` properties are extracted but never written.
 - **Partial updates** — extraction distinguishes *uninitialized* from *null*: only initialized properties produce fields, so a partially filled entity naturally becomes a partial `UPDATE`.
 - **Pass-through of already-typed values** — layers like [nette/database](https://github.com/nette/database) return `DateTimeImmutable`, `bool` and `DateInterval` instances; the hydrator accepts them as-is instead of demanding strings.
-- **Database type nuances** — `DATE` vs `DATETIME` (`#[Type\Date]`) and `TIME` columns (`DateInterval`) are first-class citizens.
+- **Database type nuances** — `DATE` vs `DATETIME` (`#[Type\Date]`) and `TIME` columns (day-scoped `#[Type\Time]` or full-range `DateInterval`) are first-class citizens.
 - **Deterministic time zones** — every hydrated date-time is normalized into the application time zone.
 - **Performance** — reflection runs once per entity class; per-row work is a plain loop over precomputed metadata (hundreds of thousands of rows per second). The library never caches data or entities, only its own metadata: data sets are processed as lazy single-pass streams.
 
@@ -126,6 +126,16 @@ class Legacy
 ```
 
 `#[Type\Date]` refines a `DateTimeImmutable` property to a date-only value (see above).
+
+`#[Type\Time]` refines a `DateTimeImmutable` property to a time-of-day value: the date is pinned to `0001-01-01` — a date that predates DST rules, so every wall time on it exists exactly once — and string formats represent it as `'HH:MM:SS'`.
+
+A `TIME` column can therefore be mapped in two ways; pick by the domain of the column:
+
+- **`DateInterval` property** — full MySQL TIME compatibility: sign and hours over 24 (`'-838:59:59'`…`'838:59:59'`), values a `DateTime` cannot hold. MySQL documents TIME as dual-purpose — time of day *and* elapsed time — and this mapping carries all of it.
+- **`#[Type\Time]` on `DateTimeImmutable`** — strictly day-scoped (`00:00:00 <= x < 24:00:00`, enforced), with the comfort of the DateTime API.
+
+> [!NOTE]
+> With nette/database on MySQL, TIME columns arrive as `DateInterval` instances; the NetteDatabase format converts them for `#[Type\Time]` properties within the day range and rejects values beyond it — such columns belong to a `DateInterval` property.
 
 ## Tests
 

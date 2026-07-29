@@ -47,8 +47,8 @@ always check per-job conclusions (`gh run view <id> --json jobs`).
   subclassing. `NetteDatabase extends Mysql` (pass-through overrides),
   family marker interface `DatabaseFormat` for attribute scoping.
 - **ValueKind** (`src/Metadata/`) — logical type resolved once from the PHP
-  type + refining attributes (`#[Type\Date]`): Int, Float, String, Bool,
-  Enum, DateTime, Date, Interval, Mixed.
+  type + refining attributes (`#[Type\Date]`, `#[Type\Time]`): Int, Float, String, Bool,
+  Enum, DateTime, Date, Time, Interval, Mixed.
 - **PropertySlot** — precomputed per-property plan for one
   (entity class, format) pair; built once, cached in the `Hydrator`
   instance. `HydratorFactory` caches hydrators per (class, format).
@@ -87,13 +87,33 @@ always check per-job conclusions (`gh run view <id> --json jobs`).
   set hook → hydrated only; backed with hooks → both ways (hooks apply);
   `private(set)`/`protected(set)`/`readonly` → extracted, never hydrated
   (their fields are not required in input data).
-- **Intervals are time-of-day, never durations** (decision 2026-07-29):
-  the Interval kind is the analogy of a database TIME column —
-  `DateInterval` is used on the PHP side only because PHP has no native
-  type for a time without a date. Every string format represents it as
-  `HH:MM:SS` (sign, hours over 24, fractional seconds), never as an
-  ISO 8601 duration; the shared codec lives in the Format base
-  (NetteDatabase overrides export to pass the instance through).
+- **Two mappings of a TIME column** (2026-07-29/30, verified empirically
+  on MariaDB 12.2 + nette/database sources — MariaDB silently accepts
+  −838:59:59…838:59:59 including '24:00:00'; TIME is documented as
+  dual-purpose: time of day AND elapsed time):
+  - **Interval kind (`DateInterval` property)** — the full MySQL TIME
+    domain, never ISO durations. Every string format represents it as
+    `HH:MM:SS` (sign, hours over 24, fractional seconds); the shared
+    `importInterval()`/`exportInterval()` codec lives in the Format base,
+    NetteDatabase overrides export to pass the instance through (Nette
+    maps MySQL TIME to FIELD_TIME_INTERVAL → DateInterval on read and
+    writes it signed via '%r%h:%I:%S'). Enforcing a day range here would
+    be stricter than the DB and the Nette layer. `DateInterval` is used
+    because PHP has no native date-less time type.
+  - **Time kind (`#[Type\Time]` on DateTimeImmutable)** — the strictly
+    day-scoped alternative (00:00:00 <= x < 24:00:00, enforced by the
+    codec; modeled on Nette's pgsql FIELD_TIME). Wall time pinned to
+    0001-01-01 by parsing `'0001-01-01 <time>'` directly — the date
+    predates DST rules, so every wall time exists exactly once (and the
+    direct parse avoids Nette's setDate-after-parse DST-gap flaw). Only
+    the wall clock is meaningful, never the instant (year 1 = LMT); no
+    zone conversion ever happens. Export is always the `H:i:s(.frac)`
+    string, incl. NetteDatabase — Nette writes DateTimeInterface by PHP
+    type as full `'Y-m-d H:i:s'` (no column-type lookup on write) and
+    MariaDB would cast it into TIME only with a truncation Note.
+    Nette-on-MySQL delivers TIME as DateInterval;
+    `NetteDatabase::importTime()` converts it within the day scope and
+    throws beyond it (such columns belong to a DateInterval property).
 - **Strictness**: missing field, null into non-nullable, wrong value type →
   `HydrationException` with `Class::$property` + field context. Value
   codecs in formats throw `ValueException`; the engine wraps it with
