@@ -40,6 +40,10 @@ class Mysql extends Format implements DatabaseFormat
 
     public function importDateTime(mixed $value, DateTimeZone $timeZone): DateTimeImmutable
     {
+        if ($value instanceof DateTimeImmutable) {
+            return $value->setTimezone($timeZone);
+        }
+
         if ($value instanceof DateTimeInterface) {
             return DateTimeImmutable::createFromInterface($value)->setTimezone($timeZone);
         }
