@@ -6,9 +6,7 @@ namespace JakubBoucek\Hydrator\Format;
 
 use DateInterval;
 use DateTimeImmutable;
-use DateTimeInterface;
 use DateTimeZone;
-use Exception;
 use JakubBoucek\Hydrator\Exception\ValueException;
 
 /**
@@ -38,37 +36,9 @@ class Mysql extends Format implements DatabaseFormat
         return $value ? 1 : 0;
     }
 
-    public function importDateTime(mixed $value, DateTimeZone $timeZone): DateTimeImmutable
-    {
-        if ($value instanceof DateTimeImmutable) {
-            return $value->setTimezone($timeZone);
-        }
-
-        if ($value instanceof DateTimeInterface) {
-            return DateTimeImmutable::createFromInterface($value)->setTimezone($timeZone);
-        }
-
-        if (is_string($value)) {
-            try {
-                return new DateTimeImmutable($value, $timeZone)->setTimezone($timeZone);
-            } catch (Exception $e) {
-                throw new ValueException("Invalid date-time string '{$value}': {$e->getMessage()}", previous: $e);
-            }
-        }
-
-        throw new ValueException(
-            'Expected date-time string or DateTimeInterface, got ' . get_debug_type($value) . '.',
-        );
-    }
-
     public function exportDateTime(DateTimeImmutable $value, DateTimeZone $timeZone): mixed
     {
         return $value->setTimezone($timeZone)->format('Y-m-d H:i:s');
-    }
-
-    public function importDate(mixed $value, DateTimeZone $timeZone): DateTimeImmutable
-    {
-        return $this->importDateTime($value, $timeZone);
     }
 
     public function exportDate(DateTimeImmutable $value, DateTimeZone $timeZone): mixed

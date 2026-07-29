@@ -6,7 +6,9 @@ namespace JakubBoucek\Hydrator\Format;
 
 use DateInterval;
 use DateTimeImmutable;
+use DateTimeInterface;
 use DateTimeZone;
+use Exception;
 use JakubBoucek\Hydrator\Exception\ValueException;
 use JakubBoucek\Hydrator\NameConverter;
 use JakubBoucek\Hydrator\SnakeCaseConverter;
@@ -63,16 +65,44 @@ abstract class Format implements FormatScope
     abstract public function exportBool(bool $value): mixed;
 
     /**
+     * Default import shared by the bundled formats: instances are normalized
+     * into the application time zone, naive strings are interpreted in it and
+     * strings carrying their own offset are recalculated into it.
+     *
      * @throws ValueException
      */
-    abstract public function importDateTime(mixed $value, DateTimeZone $timeZone): DateTimeImmutable;
+    public function importDateTime(mixed $value, DateTimeZone $timeZone): DateTimeImmutable
+    {
+        if ($value instanceof DateTimeImmutable) {
+            return $value->setTimezone($timeZone);
+        }
+
+        if ($value instanceof DateTimeInterface) {
+            return DateTimeImmutable::createFromInterface($value)->setTimezone($timeZone);
+        }
+
+        if (is_string($value)) {
+            try {
+                return new DateTimeImmutable($value, $timeZone)->setTimezone($timeZone);
+            } catch (Exception $e) {
+                throw new ValueException("Invalid date-time string '{$value}': {$e->getMessage()}", previous: $e);
+            }
+        }
+
+        throw new ValueException(
+            'Expected date-time string or DateTimeInterface, got ' . get_debug_type($value) . '.',
+        );
+    }
 
     abstract public function exportDateTime(DateTimeImmutable $value, DateTimeZone $timeZone): mixed;
 
     /**
      * @throws ValueException
      */
-    abstract public function importDate(mixed $value, DateTimeZone $timeZone): DateTimeImmutable;
+    public function importDate(mixed $value, DateTimeZone $timeZone): DateTimeImmutable
+    {
+        return $this->importDateTime($value, $timeZone);
+    }
 
     abstract public function exportDate(DateTimeImmutable $value, DateTimeZone $timeZone): mixed;
 
