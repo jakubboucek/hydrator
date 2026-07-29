@@ -22,9 +22,9 @@
     },
     "require-dev": {
         "ext-pdo_sqlite": "*",
-        "nette/database": "^3.2.9",
-        "nette/tester": "^2.6",
-        "phpstan/phpstan": "^2.1"
+        "nette/database": "^3.2.8 || ^4.0",
+        "nette/tester": "2.6.1",
+        "phpstan/phpstan": "2.2.7"
     },
     "suggest": {
         "nette/database": "Seamless hydration of Row, ActiveRow and Selection with the NetteDatabase format"

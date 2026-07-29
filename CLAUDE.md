@@ -110,4 +110,13 @@ de/hydratace". Performance target: parity with the POC harness
   (`treatPhpDocTypesAsCertain: false` — runtime guards on PHPDoc-certain
   types are intentional), no coding-standard tool, `code_analysis.yaml`
   workflow, `.gitattributes` export-ignore, MIT.
+- **Dependency constraints policy**: quality-check tools (phpstan/phpstan,
+  nette/tester) are pinned to exact versions incl. patch — they execute
+  the tests, they are not their subject, and a tool version drift must
+  not produce failures unrelated to the library; bump deliberately in a
+  dedicated iteration. Runtime-integration deps (nette/database) get a
+  wide range instead — verifying compatibility across versions is the
+  point. Dev floor `^3.2.8`: older 3.2.x work on PHP 8.4 but hit an
+  E_DEPRECATED in Selection on PHP 8.5; `|| ^4.0` starts testing 4.0
+  automatically once it goes stable.
 - README in English, no badges, GitHub alert blockquotes.
