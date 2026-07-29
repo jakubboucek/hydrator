@@ -108,9 +108,9 @@ What `toData()` produces for each property type:
 | `DateInterval` | instance <sup>1)</sup> | `'HH:MM:SS'` <sup>4)</sup> | `'HH:MM:SS'` <sup>4)</sup> |
 | `mixed` / untyped | as-is | as-is | as-is |
 
-<sup>1)</sup> Instance pass-through — the database layer formats it itself.
-<sup>2)</sup> Rendered in the application time zone.
-<sup>3)</sup> Wall clock of the value, no zone conversion; fractional seconds appended when non-zero. A plain time string is used even with nette/database — Nette would write an instance as a full `'Y-m-d H:i:s'`.
+<sup>1)</sup> Instance pass-through — the database layer formats it itself.\
+<sup>2)</sup> Rendered in the application time zone.\
+<sup>3)</sup> Wall clock of the value, no zone conversion; fractional seconds appended when non-zero. A plain time string is used even with nette/database — Nette would write an instance as a full `'Y-m-d H:i:s'`.\
 <sup>4)</sup> Full TIME domain kept: sign, hours over 24, fractional seconds.
 
 ### Hydration inputs by format
@@ -128,9 +128,9 @@ What `fromData()` accepts for each property type:
 | `DateInterval` | instance, `'HH:MM:SS'` <sup>8)</sup> | instance, `'HH:MM:SS'` <sup>8)</sup> | instance, `'HH:MM:SS'` <sup>8)</sup> |
 | `mixed` / untyped | anything, as-is | anything, as-is | anything, as-is |
 
-<sup>5)</sup> `int` or `string`, cast to the enum backing type, mapped via `::from()`.
-<sup>6)</sup> Any `DateTimeInterface` instance is converted into the application time zone; a naive string is interpreted in it, a string carrying its own offset is recalculated into it.
-<sup>7)</sup> Day range enforced (`00:00:00 <= x < 24:00:00`); a `DateInterval` beyond the day scope (Nette delivers those for MySQL TIME) is rejected.
+<sup>5)</sup> `int` or `string`, cast to the enum backing type, mapped via `::from()`.\
+<sup>6)</sup> Any `DateTimeInterface` instance is converted into the application time zone; a naive string is interpreted in it, a string carrying its own offset is recalculated into it.\
+<sup>7)</sup> Day range enforced (`00:00:00 <= x < 24:00:00`); a `DateInterval` beyond the day scope (Nette delivers those for MySQL TIME) is rejected.\
 <sup>8)</sup> Full TIME domain: sign, hours over 24, fractional seconds.
 
 Custom format = subclass:
