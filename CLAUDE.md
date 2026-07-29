@@ -24,6 +24,14 @@ GitHub Actions run natively (no Docker needed there). CI marks lowest-deps
 jobs `continue-on-error` — the run may look green while they fail, so
 always check per-job conclusions (`gh run view <id> --json jobs`).
 
+## Git workflow
+
+- **Granular commits**: one cohesive topic per commit (feature, fix,
+  convention, tooling) — never batch unrelated changes together, even at
+  the cost of more commits. Stage selectively when needed.
+- **Push sparingly**: not after every commit — push when the iteration is
+  done or when CI verification is needed.
+
 ## Architecture and terminology
 
 - **Entity** — a plain object with typed public properties implementing the
