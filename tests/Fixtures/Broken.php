@@ -7,6 +7,7 @@ namespace JakubBoucek\Hydrator\Tests\Fixtures;
 use JakubBoucek\Hydrator\Entity;
 
 use DateTime;
+use JakubBoucek\Hydrator\Attribute\DateFormat;
 use JakubBoucek\Hydrator\Attribute\Fraction;
 use JakubBoucek\Hydrator\Attribute\Name;
 use JakubBoucek\Hydrator\Attribute\Type;
@@ -64,4 +65,17 @@ class BrokenFractionOnString implements Entity
 {
     #[Fraction(3)]
     public string $value;
+}
+
+class BrokenDateFormatOnInterval implements Entity
+{
+    #[DateFormat('%H:%I')]
+    public \DateInterval $elapsed;
+}
+
+class BrokenFractionAndDateFormat implements Entity
+{
+    #[Fraction(3)]
+    #[DateFormat('H:i')]
+    public \DateTimeImmutable $moment;
 }

@@ -10,6 +10,7 @@ use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
 use Generator;
+use JakubBoucek\Hydrator\Attribute\DateFormat;
 use JakubBoucek\Hydrator\Attribute\FormatScoped;
 use JakubBoucek\Hydrator\Attribute\Fraction;
 use JakubBoucek\Hydrator\Attribute\Name;
@@ -137,18 +138,8 @@ final class Hydrator
                     ValueKind::Float => (float) $value, // @phpstan-ignore cast.double
                     ValueKind::String => $this->importString($value),
                     ValueKind::Bool => $this->format->importBool($value),
-                    ValueKind::DateTime => $this->asDeclaredDateTime(
-                        $this->format->importDateTime($value, $this->timeZone),
-                        $slot->type,
-                    ),
-                    ValueKind::Date => $this->asDeclaredDateTime(
-                        $this->format->importDate($value, $this->timeZone),
-                        $slot->type,
-                    ),
-                    ValueKind::Time => $this->asDeclaredDateTime(
-                        $this->format->importTime($value, $this->timeZone),
-                        $slot->type,
-                    ),
+                    ValueKind::DateTime, ValueKind::Date, ValueKind::Time
+                        => $this->asDeclaredDateTime($this->importTemporal($slot, $value), $slot->type),
                     ValueKind::Interval => $this->format->importInterval($value),
                     ValueKind::Enum => $this->importEnum($value, $slot),
                     ValueKind::Mixed => $value,
@@ -232,11 +223,8 @@ final class Hydrator
             try {
                 $data[$slot->fieldName] = match ($slot->kind) {
                     ValueKind::Bool => $this->format->exportBool($this->expectBool($value)),
-                    ValueKind::DateTime
-                        => $this->format->exportDateTime($this->expectDateTime($value), $this->timeZone, $slot->fraction),
-                    ValueKind::Date => $this->format->exportDate($this->expectDateTime($value), $this->timeZone),
-                    ValueKind::Time
-                        => $this->format->exportTime($this->expectDateTime($value), $this->timeZone, $slot->fraction),
+                    ValueKind::DateTime, ValueKind::Date, ValueKind::Time
+                        => $this->exportTemporal($slot, $this->expectDateTime($value)),
                     ValueKind::Interval => $this->format->exportInterval($this->expectInterval($value), $slot->fraction),
                     ValueKind::Enum => $this->expectEnum($value)->value,
                     default => $value,
@@ -309,6 +297,48 @@ final class Hydrator
 
         // DB layers may return backing values as strings (raw PDO), cast first
         return $enum::from($slot->enumBackedByInt ? (int) $value : (string) $value);
+    }
+
+    /**
+     * @throws ValueException
+     */
+    private function importTemporal(PropertySlot $slot, mixed $value): DateTimeImmutable
+    {
+        // a custom pattern parses strings itself — same pattern as the export,
+        // '!' zeroes the parts the pattern does not capture (deterministic
+        // lossy roundtrip); instances still go through the format codec
+        if ($slot->dateFormat !== null && is_string($value)) {
+            $pattern = $slot->dateFormat->pattern;
+            $parsed = DateTimeImmutable::createFromFormat('!' . $pattern, $value, $this->timeZone);
+            if ($parsed === false || DateTimeImmutable::getLastErrors() !== false) {
+                throw new ValueException("String '{$value}' does not match the date format '{$pattern}'.");
+            }
+
+            return $slot->kind === ValueKind::Time
+                ? new DateTimeImmutable('0001-01-01 ' . $parsed->format('H:i:s.u'), $this->timeZone)
+                : $parsed->setTimezone($this->timeZone);
+        }
+
+        return match ($slot->kind) {
+            ValueKind::DateTime => $this->format->importDateTime($value, $this->timeZone),
+            ValueKind::Date => $this->format->importDate($value, $this->timeZone),
+            default => $this->format->importTime($value, $this->timeZone),
+        };
+    }
+
+    private function exportTemporal(PropertySlot $slot, DateTimeImmutable $value): mixed
+    {
+        if ($slot->dateFormat !== null) {
+            // Time kind keeps its wall clock, the others render in the app time zone
+            $value = $slot->kind === ValueKind::Time ? $value : $value->setTimezone($this->timeZone);
+            return $value->format($slot->dateFormat->pattern);
+        }
+
+        return match ($slot->kind) {
+            ValueKind::DateTime => $this->format->exportDateTime($value, $this->timeZone, $slot->fraction),
+            ValueKind::Date => $this->format->exportDate($value, $this->timeZone),
+            default => $this->format->exportTime($value, $this->timeZone, $slot->fraction),
+        };
     }
 
     private function asDeclaredDateTime(DateTimeImmutable $value, string $class): DateTimeImmutable
@@ -392,6 +422,28 @@ final class Hydrator
             }
         }
 
+        $dateFormat = $this->resolveScopedAttribute($property, DateFormat::class);
+        if ($dateFormat !== null) {
+            if ($dateFormat->pattern === '') {
+                throw new MetadataException(
+                    "#[DateFormat] pattern must not be empty on {$this->entityClass}::\${$name}.",
+                );
+            }
+            if (!in_array($kind, [ValueKind::DateTime, ValueKind::Date, ValueKind::Time], true)) {
+                throw new MetadataException(
+                    '#[DateFormat] is only allowed on date-time, date and time properties'
+                    . ' (DateInterval has no bidirectional format parser in PHP),'
+                    . " found on {$this->entityClass}::\${$name}.",
+                );
+            }
+            if ($fraction !== null) {
+                throw new MetadataException(
+                    '#[Fraction] and #[DateFormat] cannot both apply to'
+                    . " {$this->entityClass}::\${$name} for format " . $this->format::class . '.',
+                );
+            }
+        }
+
         return new PropertySlot(
             name: $name,
             fieldName: $this->resolveFieldName($property),
@@ -403,6 +455,7 @@ final class Hydrator
             writable: $writable,
             readable: $readable,
             fraction: $fraction,
+            dateFormat: $dateFormat,
             reflection: $property,
         );
     }

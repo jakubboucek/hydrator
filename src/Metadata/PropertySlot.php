@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace JakubBoucek\Hydrator\Metadata;
 
+use JakubBoucek\Hydrator\Attribute\DateFormat;
 use JakubBoucek\Hydrator\Attribute\Fraction;
 use ReflectionProperty;
 
@@ -26,6 +27,7 @@ final readonly class PropertySlot
         public bool $writable,
         public bool $readable,
         public ?Fraction $fraction,
+        public ?DateFormat $dateFormat,
         public ReflectionProperty $reflection,
     ) {
     }
