@@ -32,3 +32,25 @@ test('hydrates a mysqli row (values as strings)', function () use ($mysqli, $hyd
     Assert::same('42', $row['counter']); // sanity: mysqli->query() returns strings
     Mariadb::assertReference($hydrator->fromData($row));
 });
+
+test('roundtrip: mysqli write keeps the fraction as well', function () use ($mysqli, $hydrator): void {
+    $row = $mysqli->query('SELECT * FROM ' . TABLE . ' WHERE id = 1')->fetch_assoc();
+    $entity = $hydrator->fromData($row);
+
+    $data = $hydrator->toData($entity);
+    unset($data['id']);
+
+    $columns = implode(', ', array_map(fn(string $column): string => "`{$column}`", array_keys($data)));
+    $placeholders = implode(', ', array_fill(0, count($data), '?'));
+    $statement = $mysqli->prepare('INSERT INTO ' . TABLE . " ({$columns}) VALUES ({$placeholders})");
+    $statement->execute(array_values($data));
+    $newId = (int) $mysqli->insert_id;
+
+    $raw = $mysqli->query('SELECT measured_at, alarm_at FROM ' . TABLE . " WHERE id = {$newId}")->fetch_assoc();
+    Assert::same('2026-07-29 10:30:00.123456', $raw['measured_at']);
+    Assert::same('08:30:00.125', $raw['alarm_at']);
+
+    Mariadb::assertReference(
+        $hydrator->fromData($mysqli->query('SELECT * FROM ' . TABLE . " WHERE id = {$newId}")->fetch_assoc()),
+    );
+});

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use JakubBoucek\Hydrator\Format\Mysql;
 use JakubBoucek\Hydrator\Format\NetteDatabase;
 use JakubBoucek\Hydrator\Hydrator;
 use JakubBoucek\Hydrator\Tests\Fixtures\DataRow;
@@ -45,6 +46,25 @@ test('end to end: #[Fraction] string export keeps microseconds through Nette wri
 
     // raw proof straight from the database: the fraction survived the write
     $raw = $pdo->query("SELECT measured_at, alarm_at FROM " . TABLE . " WHERE id = {$newId}")
+        ->fetch(PDO::FETCH_ASSOC);
+    Assert::same('2026-07-29 10:30:00.123456', $raw['measured_at']);
+    Assert::same('08:30:00.125', $raw['alarm_at']);
+});
+
+test('PDO write keeps the fraction as well (Mysql format)', function () use ($pdo): void {
+    $hydrator = new Hydrator(DataRow::class, Mysql::class, new DateTimeZone('Europe/Prague'));
+    $entity = $hydrator->fromData($pdo->query('SELECT * FROM ' . TABLE . ' WHERE id = 1')->fetch(PDO::FETCH_ASSOC));
+
+    $data = $hydrator->toData($entity);
+    unset($data['id']);
+
+    $columns = implode(', ', array_map(fn(string $column): string => "`{$column}`", array_keys($data)));
+    $placeholders = implode(', ', array_fill(0, count($data), '?'));
+    $pdo->prepare('INSERT INTO ' . TABLE . " ({$columns}) VALUES ({$placeholders})")
+        ->execute(array_values($data));
+    $newId = (int) $pdo->lastInsertId();
+
+    $raw = $pdo->query('SELECT measured_at, alarm_at FROM ' . TABLE . " WHERE id = {$newId}")
         ->fetch(PDO::FETCH_ASSOC);
     Assert::same('2026-07-29 10:30:00.123456', $raw['measured_at']);
     Assert::same('08:30:00.125', $raw['alarm_at']);
