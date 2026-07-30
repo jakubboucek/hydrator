@@ -108,12 +108,14 @@ What `toData()` produces for each property type:
 | `#[Type\Date]` | instance <sup>1)</sup> | `'Y-m-d'` <sup>2)</sup> | `'Y-m-d'` <sup>2)</sup> |
 | `#[Type\Time]` | `'H:i:s'` <sup>3)</sup> | `'H:i:s'` <sup>3)</sup> | `'H:i:s'` <sup>3)</sup> |
 | `DateInterval` | instance <sup>1)</sup> | `'HH:MM:SS'` <sup>4)</sup> | `'HH:MM:SS'` <sup>4)</sup> |
+| `Struct` | JSON string <sup>5)</sup> | JSON string <sup>5)</sup> | nested array |
 | `mixed` / untyped | as-is | as-is | as-is |
 
 <sup>1)</sup> Instance pass-through — the database layer formats it itself.\
 <sup>2)</sup> Rendered in the application time zone.\
 <sup>3)</sup> Wall clock of the value, no zone conversion; fractional seconds appended when non-zero. A plain time string is used even with nette/database — Nette would write an instance as a full `'Y-m-d H:i:s'`.\
-<sup>4)</sup> Full TIME domain kept: sign, hours over 24, fractional seconds.
+<sup>4)</sup> Full TIME domain kept: sign, hours over 24, fractional seconds.\
+<sup>5)</sup> The struct's own `toJson()` rendering; an empty struct is stored as `NULL`.
 
 The `#[Fraction]` and `#[DateFormat]` attributes override these default renderings — see [Attributes](#attributes).
 
@@ -125,17 +127,19 @@ What `fromData()` accepts for each property type:
 |---|---|---|---|
 | `int`, `float`, `string` | scalar (cast) | scalar (cast) | scalar (cast) |
 | `bool` | `bool`, `0`/`1`, `'0'`/`'1'` | `bool`, `0`/`1`, `'0'`/`'1'` | `bool` only |
-| `BackedEnum` | backing value <sup>5)</sup> | backing value <sup>5)</sup> | backing value <sup>5)</sup> |
-| `DateTimeImmutable` | instance, string <sup>6)</sup> | instance, string <sup>6)</sup> | instance, string <sup>6)</sup> |
-| `#[Type\Date]` | instance, string <sup>6)</sup> | instance, string <sup>6)</sup> | instance, string <sup>6)</sup> |
-| `#[Type\Time]` | instance, `'HH:MM:SS'`, `DateInterval` <sup>7)</sup> | instance, `'HH:MM:SS'` <sup>7)</sup> | instance, `'HH:MM:SS'` <sup>7)</sup> |
-| `DateInterval` | instance, `'HH:MM:SS'` <sup>8)</sup> | instance, `'HH:MM:SS'` <sup>8)</sup> | instance, `'HH:MM:SS'` <sup>8)</sup> |
+| `BackedEnum` | backing value <sup>6)</sup> | backing value <sup>6)</sup> | backing value <sup>6)</sup> |
+| `DateTimeImmutable` | instance, string <sup>7)</sup> | instance, string <sup>7)</sup> | instance, string <sup>7)</sup> |
+| `#[Type\Date]` | instance, string <sup>7)</sup> | instance, string <sup>7)</sup> | instance, string <sup>7)</sup> |
+| `#[Type\Time]` | instance, `'HH:MM:SS'`, `DateInterval` <sup>8)</sup> | instance, `'HH:MM:SS'` <sup>8)</sup> | instance, `'HH:MM:SS'` <sup>8)</sup> |
+| `DateInterval` | instance, `'HH:MM:SS'` <sup>9)</sup> | instance, `'HH:MM:SS'` <sup>9)</sup> | instance, `'HH:MM:SS'` <sup>9)</sup> |
+| `Struct` | JSON string, `NULL` <sup>10)</sup> | JSON string, `NULL` <sup>10)</sup> | array, `null` <sup>10)</sup> |
 | `mixed` / untyped | anything, as-is | anything, as-is | anything, as-is |
 
-<sup>5)</sup> `int` or `string`, cast to the enum backing type, mapped via `::from()`.\
-<sup>6)</sup> Any `DateTimeInterface` instance is converted into the application time zone; a naive string is interpreted in it, a string carrying its own offset is recalculated into it.\
-<sup>7)</sup> Day range enforced (`00:00:00 <= x < 24:00:00`); a `DateInterval` beyond the day scope (Nette delivers those for MySQL TIME) is rejected.\
-<sup>8)</sup> Full TIME domain: sign, hours over 24, fractional seconds.
+<sup>6)</sup> `int` or `string`, cast to the enum backing type, mapped via `::from()`.\
+<sup>7)</sup> Any `DateTimeInterface` instance is converted into the application time zone; a naive string is interpreted in it, a string carrying its own offset is recalculated into it.\
+<sup>8)</sup> Day range enforced (`00:00:00 <= x < 24:00:00`); a `DateInterval` beyond the day scope (Nette delivers those for MySQL TIME) is rejected.\
+<sup>9)</sup> Full TIME domain: sign, hours over 24, fractional seconds.\
+<sup>10)</sup> Parsed by the struct itself (`fromJson`/`fromArray`); `NULL` hydrates into an empty struct instance — see [Structs](#structs).
 
 Custom format = subclass:
 
@@ -210,6 +214,43 @@ public DateTimeImmutable $mixedUse;
 
 > [!NOTE]
 > With `#[Fraction]` or `#[DateFormat]` the NetteDatabase format exports a finished string instead of the instance — Nette's own `'Y-m-d H:i:s'` formatting would drop the fraction, which is the very motivation: `DATETIME(6)` columns keep their microseconds.
+
+## Structs
+
+A *struct* is an autonomous structure stored in a single JSON column: for the database the column stays an ordinary string, but the entity works with it as a typed object. The hydrator never looks inside — it hands the serialized value to the struct and asks for it back; parsing, rendering and emptiness are fully the struct's domain. The `Struct` interface carries two representations: `fromJson`/`toJson` (databases) and `fromArray`/`toArray` (plain data, used by the Json format).
+
+```php
+use JakubBoucek\Hydrator\BaseStruct;
+use JakubBoucek\Hydrator\Entity;
+use JakubBoucek\Hydrator\NoteListStruct;
+
+class AddressStruct extends BaseStruct
+{
+    public ?string $city = null;
+    public ?string $street = null;
+    public ?string $zip = null;
+}
+
+class Member implements Entity
+{
+    public int $id;
+    public AddressStruct $address;   // non-nullable: an instance always exists
+    public NoteListStruct $notes;
+}
+
+$member = $members->fromData($row);
+$member->address->city = 'Plzeň';    // writable at any time, no null-checks
+$member->notes->add('Paid by wire', 'admin', new DateTimeImmutable());
+```
+
+Rules of the mechanism:
+
+- **An instance always exists**: a `NULL` column hydrates into an empty struct, so struct properties are declared non-nullable and are writable at any time. Partial-update semantics stay untouched (an uninitialized property still produces no field).
+- **An empty struct is stored as `NULL`**, never as `'{}'` or `'[]'` — emptiness is defined by the struct itself (`toJson()` returning null).
+- In the Json format structs travel as **nested arrays** and emptiness is explicit (`[]`).
+- Structs must be constructible without arguments, and the array representation must stay plain JSON-serializable data — no objects inside (dates as strings).
+
+Bundled implementations: `BaseStruct` (declared fields; unknown keys are dropped and nulls filtered — documented lossy traits), `DynamicStruct` (lossless free-form, an stdClass analogy), and the list-shaped showcases `TagListStruct` and `NoteListStruct` (`add…`/`remove…`, iteration, `toText()`).
 
 ## Tests
 

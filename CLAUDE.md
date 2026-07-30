@@ -61,6 +61,12 @@ always check per-job conclusions (`gh run view <id> --json jobs`).
   class-string (the engine holds the instance internally); customization by
   subclassing. `NetteDatabase extends Mysql` (pass-through overrides),
   family marker interface `DatabaseFormat` for attribute scoping.
+- **Struct** (`src/Struct.php` + `BaseStruct`, `DynamicStruct`,
+  `TagListStruct`, `NoteListStruct`) — an autonomous structure in a single
+  JSON column; the hydrator only passes serialized values, the format
+  chooses the representation (DB pair `fromJson`/`toJson` = string, Json
+  format = `fromArray`/`toArray` nested array). Signatures 1:1 with
+  skradbuza `EntityStruct` for drop-in migration.
 - **ValueKind** (`src/Metadata/`) — logical type resolved once from the PHP
   type + refining attributes (`#[Type\Date]`, `#[Type\Time]`): Int, Float, String, Bool,
   Enum, DateTime, Date, Time, Interval, Mixed.
@@ -149,6 +155,17 @@ always check per-job conclusions (`gh run view <id> --json jobs`).
     Nette-on-MySQL delivers TIME as DateInterval;
     `NetteDatabase::importTime()` converts it within the day scope and
     throws beyond it (such columns belong to a DateInterval property).
+- **Structs** (2026-07-30): a NULL column always hydrates into an empty
+  instance — struct properties are non-nullable by design so they are
+  writable at any time (`$member->address->city = …` never fails; the
+  struct kind is exempt from null-strictness). An empty struct is stored
+  as NULL, never `'{}'`/`'[]'` — emptiness belongs to the struct
+  (`toJson()` → null); in the Json format emptiness is explicit (`[]`).
+  Struct classes need a no-arg constructor
+  (`@phpstan-consistent-constructor` on BaseStruct). BaseStruct's lossy
+  traits (unknown keys dropped, nulls filtered) are documented; the
+  lossless variant is DynamicStruct. A property typed with a
+  non-instantiable Struct (interface/abstract) → MetadataException.
 - **Strictness**: missing field, null into non-nullable, wrong value type →
   `HydrationException` with `Class::$property` + field context. Value
   codecs in formats throw `ValueException`; the engine wraps it with
@@ -167,8 +184,11 @@ always check per-job conclusions (`gh run view <id> --json jobs`).
   `HH:MM:SS`. Json deliberately does NOT implement DatabaseFormat, so
   database-scoped attributes skip it. Additions 2026-07-30:
   `#[Type\Time]`, `#[Fraction]`, `#[DateFormat]` (see decisions above).
-- **0.3** — nested structs (per-format contract: string in DB, nested
-  object in JSON) and a general extension point for custom value types.
+- **0.3** (structs implemented 2026-07-30) — `Struct` interface +
+  `BaseStruct`/`DynamicStruct`/`TagListStruct`/`NoteListStruct`,
+  representation per format (DB string vs. Json nested array), MariaDB
+  integration proof. Still open from the 0.3 scope: a general extension
+  point for custom value types (the DatabaseValue idea).
 - Later: composite keys, more `Type\*` attributes as needed.
 
 First real consumer: project Lexion (infosoud-checker; PHP 8.5,
