@@ -20,6 +20,21 @@ docker compose run --rm php composer phpstan
 docker compose run --rm php85 composer test   # PHP 8.5 variant
 ```
 
+MariaDB integration tests (`tests/Integration.mariadb.*`) run only with
+`DATABASE_DSN` set and skip otherwise. Locally:
+
+```shell
+docker compose up -d mysqldb
+docker compose run --rm -e DATABASE_DSN='mysql:host=mysqldb;dbname=hydrator_test;charset=utf8mb4' php composer test
+```
+
+(User/password default to root/devstack; override with `DATABASE_USER`/
+`DATABASE_PASSWORD`.) In CI they run as the dedicated "Integration tests"
+job with a MariaDB 10.6 service container. Each test file owns its table —
+Tester runs files in parallel. MariaDB 10.6 is the lowest devstack image;
+the JSON column (LONGTEXT alias + json_valid check) is supported
+everywhere since 10.2.7.
+
 GitHub Actions run natively (no Docker needed there). CI marks lowest-deps
 jobs `continue-on-error` — the run may look green while they fail, so
 always check per-job conclusions (`gh run view <id> --json jobs`).

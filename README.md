@@ -217,6 +217,8 @@ composer run test
 composer run phpstan
 ```
 
+Integration tests against a real MariaDB server (common column types over PDO, mysqli and nette/database in every `convertBoolean`/`newDateTime` configuration) run when `DATABASE_DSN` (plus optional `DATABASE_USER`/`DATABASE_PASSWORD`) points to a server, and skip otherwise.
+
 ## License
 
 MIT. See the [LICENSE](LICENSE) file.
