@@ -16,3 +16,12 @@ services:
             - ".:/var/www/html"
         profiles:
             - php85
+
+    # Integration test database: `docker compose up -d mysqldb`, then run
+    # tests with DATABASE_DSN (see CLAUDE.md). Data is ephemeral by design.
+    mysqldb:
+        image: jakubboucek/lamp-devstack-mysql:10.6
+        environment:
+            MARIADB_DATABASE: hydrator_test
+            MARIADB_ROOT_PASSWORD: devstack
+            TZ: Europe/Prague
