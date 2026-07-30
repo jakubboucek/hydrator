@@ -10,6 +10,7 @@ use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
 use Generator;
+use JsonException;
 use JakubBoucek\Hydrator\Attribute\DateFormat;
 use JakubBoucek\Hydrator\Attribute\FormatScoped;
 use JakubBoucek\Hydrator\Attribute\Fraction;
@@ -137,6 +138,15 @@ class Hydrator
                 $value = null;
             }
 
+            if ($value === null && $slot->kind === ValueKind::Struct) {
+                // a struct always exists in the hydrated entity (NULL column
+                // ≡ empty struct), so it is writable at any time
+                /** @var class-string<Struct> $structClass */
+                $structClass = $slot->type;
+                $entity->$name = $structClass::fromJson(null);
+                continue;
+            }
+
             if ($value === null) {
                 if ($slot->nullable) {
                     $entity->$name = null;
@@ -160,9 +170,10 @@ class Hydrator
                         => $this->asDeclaredDateTime($this->importTemporal($slot, $value), $slot->type),
                     ValueKind::Interval => $this->format->importInterval($value),
                     ValueKind::Enum => $this->importEnum($value, $slot),
+                    ValueKind::Struct => $this->importStruct($value, $slot),
                     ValueKind::Mixed => $value,
                 };
-            } catch (ValueException | ValueError $e) {
+            } catch (ValueException | ValueError | JsonException $e) {
                 throw new HydrationException(
                     "Cannot hydrate property {$this->entityClass}::\${$name} from field"
                     . " '{$slot->fieldName}': {$e->getMessage()}",
@@ -245,9 +256,10 @@ class Hydrator
                         => $this->exportTemporal($slot, $this->expectDateTime($value)),
                     ValueKind::Interval => $this->format->exportInterval($this->expectInterval($value), $slot->fraction),
                     ValueKind::Enum => $this->expectEnum($value)->value,
+                    ValueKind::Struct => $this->format->exportStruct($this->expectStruct($value)),
                     default => $value,
                 };
-            } catch (ValueException $e) {
+            } catch (ValueException | JsonException $e) {
                 throw new ExtractionException(
                     "Cannot extract property {$this->entityClass}::\${$name}: {$e->getMessage()}",
                     previous: $e,
@@ -293,6 +305,21 @@ class Hydrator
         return $value instanceof BackedEnum
             ? $value
             : throw new ValueException('Expected BackedEnum, got ' . get_debug_type($value) . '.');
+    }
+
+    private function expectStruct(mixed $value): Struct
+    {
+        return $value instanceof Struct
+            ? $value
+            : throw new ValueException('Expected Struct, got ' . get_debug_type($value) . '.');
+    }
+
+    private function importStruct(mixed $value, PropertySlot $slot): Struct
+    {
+        /** @var class-string<Struct> $structClass */
+        $structClass = $slot->type;
+
+        return $this->format->importStruct($value, $structClass);
     }
 
     private function importString(mixed $value): string
@@ -409,6 +436,17 @@ class Hydrator
 
         $kind = $this->resolveKind($property, $type);
 
+        if ($kind === ValueKind::Struct && $type !== null) {
+            /** @var class-string<Struct> $structClass */
+            $structClass = $type->getName();
+            if (!new ReflectionClass($structClass)->isInstantiable()) {
+                throw new MetadataException(
+                    "Struct property {$this->entityClass}::\${$name} must be typed with"
+                    . " a concrete Struct implementation, '{$structClass}' is not instantiable.",
+                );
+            }
+        }
+
         // Writable: no restricted setter, and a virtual property only with a set hook
         $writable = !$property->isReadOnly()
             && !$property->isProtectedSet()
@@ -505,6 +543,7 @@ class Hydrator
             is_a($type->getName(), DateTimeImmutable::class, true) => ValueKind::DateTime,
             is_a($type->getName(), DateInterval::class, true) => ValueKind::Interval,
             is_subclass_of($type->getName(), BackedEnum::class) => ValueKind::Enum,
+            is_a($type->getName(), Struct::class, true) => ValueKind::Struct,
             is_a($type->getName(), DateTimeInterface::class, true) => throw new MetadataException(
                 "Mutable date-time type '{$type->getName()}' is not supported for"
                 . " {$this->entityClass}::\${$name}, use DateTimeImmutable.",

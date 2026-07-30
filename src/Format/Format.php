@@ -13,6 +13,7 @@ use JakubBoucek\Hydrator\Attribute\Fraction;
 use JakubBoucek\Hydrator\Exception\ValueException;
 use JakubBoucek\Hydrator\NameConverter;
 use JakubBoucek\Hydrator\SnakeCaseConverter;
+use JakubBoucek\Hydrator\Struct;
 
 /**
  * Definition of a data representation (database row, raw PDO row, …): the
@@ -201,6 +202,30 @@ abstract class Format implements FormatScope
             $value->i,
             $value->s,
         ) . $this->fractionSuffix(sprintf('%06d', (int) floor($value->f * 1_000_000)), $fraction);
+    }
+
+    /**
+     * Structs default to the database representation: a JSON string in, the
+     * struct's own JSON rendering out (null = empty struct = NULL in the
+     * database). The Json format overrides both with the array pair. A NULL
+     * field never reaches these methods — the engine turns it into an empty
+     * struct itself.
+     *
+     * @param class-string<Struct> $structClass
+     * @throws ValueException
+     */
+    public function importStruct(mixed $value, string $structClass): Struct
+    {
+        if (!is_string($value)) {
+            throw new ValueException('Expected JSON string, got ' . get_debug_type($value) . '.');
+        }
+
+        return $structClass::fromJson($value);
+    }
+
+    public function exportStruct(Struct $value): mixed
+    {
+        return $value->toJson();
     }
 
     /**

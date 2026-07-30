@@ -11,6 +11,7 @@ use JakubBoucek\Hydrator\Attribute\Fraction;
 use JakubBoucek\Hydrator\Exception\ValueException;
 use JakubBoucek\Hydrator\IdentityConverter;
 use JakubBoucek\Hydrator\NameConverter;
+use JakubBoucek\Hydrator\Struct;
 
 /**
  * JSON representation (decoded payloads of APIs): property names map to
@@ -55,5 +56,21 @@ class Json extends Format
     public function exportDate(DateTimeImmutable $value, DateTimeZone $timeZone): mixed
     {
         return $value->setTimezone($timeZone)->format('Y-m-d');
+    }
+
+    public function importStruct(mixed $value, string $structClass): Struct
+    {
+        if (!is_array($value)) {
+            throw new ValueException('Expected decoded JSON array, got ' . get_debug_type($value) . '.');
+        }
+
+        return $structClass::fromArray($value);
+    }
+
+    public function exportStruct(Struct $value): mixed
+    {
+        // emptiness is explicit in the API representation ([]), unlike
+        // the database representation where an empty struct becomes NULL
+        return $value->toArray();
     }
 }
