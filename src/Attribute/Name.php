@@ -17,7 +17,7 @@ use JakubBoucek\Hydrator\Format\FormatScope;
  * unreachable and rejected with a MetadataException.
  */
 #[Attribute(Attribute::TARGET_PROPERTY | Attribute::IS_REPEATABLE)]
-final class Name
+final class Name implements FormatScoped
 {
     /**
      * @param string $name Field name in data.

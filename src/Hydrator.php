@@ -10,6 +10,7 @@ use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
 use Generator;
+use JakubBoucek\Hydrator\Attribute\FormatScoped;
 use JakubBoucek\Hydrator\Attribute\Name;
 use JakubBoucek\Hydrator\Attribute\Type;
 use JakubBoucek\Hydrator\Exception\HydrationException;
@@ -439,44 +440,60 @@ final class Hydrator
 
     private function resolveFieldName(ReflectionProperty $property): string
     {
+        return $this->resolveScopedAttribute($property, Name::class)->name
+            ?? $this->format->fieldName($property->getName());
+    }
+
+    /**
+     * Resolves a repeatable format-scoped attribute: evaluated top-down in
+     * declaration order, the first one matching the current format wins;
+     * an attribute without scope is a catch-all and must be declared last.
+     *
+     * @template A of FormatScoped
+     * @param class-string<A> $attributeClass
+     * @return A|null
+     */
+    private function resolveScopedAttribute(ReflectionProperty $property, string $attributeClass): ?FormatScoped
+    {
         $name = $property->getName();
+        $label = '#[' . substr($attributeClass, (int) strrpos($attributeClass, '\\') + 1) . ']';
         $matched = null;
         $catchAllSeen = false;
 
-        foreach ($property->getAttributes(Name::class) as $attribute) {
+        foreach ($property->getAttributes($attributeClass) as $attribute) {
             if ($catchAllSeen) {
                 throw new MetadataException(
-                    "Unreachable #[Name] attribute on {$this->entityClass}::\${$name}:"
-                    . ' declared after a catch-all #[Name] without format scope.',
+                    "Unreachable {$label} attribute on {$this->entityClass}::\${$name}:"
+                    . " declared after a catch-all {$label} without format scope.",
                 );
             }
 
-            $nameAttribute = $attribute->newInstance();
+            $instance = $attribute->newInstance();
 
-            if ($nameAttribute->formats === []) {
+            if ($instance->formats === []) {
                 $catchAllSeen = true;
-                $matched ??= $nameAttribute->name;
+                $matched ??= $instance;
                 continue;
             }
 
-            foreach ($nameAttribute->formats as $scope) {
+            foreach ($instance->formats as $scope) {
                 if (!is_string($scope)
                     || (!class_exists($scope) && !interface_exists($scope))
                     || !is_a($scope, FormatScope::class, true)
                 ) {
                     $described = is_string($scope) ? "'{$scope}'" : get_debug_type($scope);
                     throw new MetadataException(
-                        "Invalid format scope {$described} in #[Name] attribute"
+                        "Invalid format scope {$described} in {$label} attribute"
                         . " on {$this->entityClass}::\${$name}, expected a class-string of "
                         . FormatScope::class . '.',
                     );
                 }
                 if ($matched === null && $this->format instanceof $scope) {
-                    $matched = $nameAttribute->name;
+                    $matched = $instance;
                 }
             }
         }
 
-        return $matched ?? $this->format->fieldName($name);
+        return $matched;
     }
 }
