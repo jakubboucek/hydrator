@@ -59,14 +59,34 @@ always check per-job conclusions (`gh run view <id> --json jobs`).
   entities — that is the application's domain. `fromDataSet()` returns a
   lazy single-pass `Generator`. The only caches are entity metadata and
   compiled plans.
-- **Attribute evaluation order**: `#[Name]` is repeatable, evaluated
-  top-down, first match wins (like `match`); scopes match via `instanceof`
-  (concrete class, ancestor or family interface) — so a format subclass
-  inherits scopes of its parents. An attribute declared after an unscoped
-  catch-all → `MetadataException` (unreachable). Scopes are typed
+- **Attribute evaluation order**: format-scoped attributes (`#[Name]`,
+  `#[Fraction]`, `#[DateFormat]` — shared `FormatScoped` interface and a
+  generic resolver) are repeatable, evaluated top-down, first match wins
+  (like `match`); scopes match via `instanceof` (concrete class, ancestor
+  or family interface) — so a format subclass inherits scopes of its
+  parents. An attribute declared after an unscoped catch-all →
+  `MetadataException` (unreachable). Scopes are typed
   `class-string<FormatScope>` — a marker interface implemented by `Format`
   and extended by family interfaces (`DatabaseFormat`); custom family
   interfaces must extend `FormatScope` too.
+- **Fraction and DateFormat** (2026-07-30): `#[Fraction(digits, omitZero)]`
+  renders fractional seconds strictly on export (DATETIME(n)/TIME(n)
+  analogy; digits 0–6, truncation not rounding, `digits: 0` = never) for
+  DateTime/Time/Interval kinds; without it the old defaults stay.
+  `#[DateFormat(pattern)]` is a custom pattern for DateTime/Date/Time
+  kinds, bidirectional by construction: export `format()`, import
+  `createFromFormat('!' . pattern)` strictly (no constructor fallback;
+  '!' zeroes uncaptured parts → lossy patterns roundtrip
+  deterministically). Deliberately NOT for Interval —
+  `DateInterval::format()` has no parsing counterpart, a custom pattern
+  would break the bidirectional promise (domain boundary: the library
+  only offers transformations whose inverse it can guarantee; exotica →
+  custom Format subclass). Mutually exclusive per (property, format) —
+  different formats may use one each. Either attribute switches
+  NetteDatabase export from instance pass-through to a finished string
+  (Nette formats by PHP type and would drop the fraction — the
+  motivation of the feature). Codec export signatures carry
+  `?Fraction` — BC break for custom formats, allowed in 0.x.
 - **Time zone is an application property** (factory-level, not per-format):
   every hydrated date-time is normalized into it (instances converted,
   naive strings interpreted, foreign offsets recalculated). Defaults to
@@ -130,7 +150,8 @@ always check per-job conclusions (`gh run view <id> --json jobs`).
   (camelCase as-is), date-time ↔ RFC 3339 with foreign-offset
   recalculation, date ↔ `Y-m-d`, strict native booleans, times as
   `HH:MM:SS`. Json deliberately does NOT implement DatabaseFormat, so
-  database-scoped attributes skip it.
+  database-scoped attributes skip it. Additions 2026-07-30:
+  `#[Type\Time]`, `#[Fraction]`, `#[DateFormat]` (see decisions above).
 - **0.3** — nested structs (per-format contract: string in DB, nested
   object in JSON) and a general extension point for custom value types.
 - Later: composite keys, more `Type\*` attributes as needed.

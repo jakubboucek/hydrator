@@ -113,6 +113,8 @@ What `toData()` produces for each property type:
 <sup>3)</sup> Wall clock of the value, no zone conversion; fractional seconds appended when non-zero. A plain time string is used even with nette/database — Nette would write an instance as a full `'Y-m-d H:i:s'`.\
 <sup>4)</sup> Full TIME domain kept: sign, hours over 24, fractional seconds.
 
+The `#[Fraction]` and `#[DateFormat]` attributes override these default renderings — see [Attributes](#attributes).
+
 ### Hydration inputs by format
 
 What `fromData()` accepts for each property type:
@@ -176,6 +178,36 @@ A `TIME` column can therefore be mapped in two ways; pick by the domain of the c
 
 > [!NOTE]
 > With nette/database on MySQL, TIME columns arrive as `DateInterval` instances; the NetteDatabase format converts them for `#[Type\Time]` properties within the day range and rejects values beyond it — such columns belong to a `DateInterval` property.
+
+`#[Fraction]` controls fractional seconds on export — the analogy of `DATETIME(n)`/`TIME(n)` column precision — for date-time, time and interval properties. Without it the format defaults apply (date-times render without a fraction, times and intervals append one when non-zero); with it the rendering is strict: exactly `digits` places (zero-padded, truncated), `digits: 0` never renders one, `omitZero: true` drops a zero-valued part:
+
+```php
+#[Fraction(6)]                          // DATETIME(6): always six places
+public DateTimeImmutable $measuredAt;
+
+#[Fraction(3, omitZero: true, formats: [Json::class])]  // milliseconds, only when non-zero
+public DateTimeImmutable $processedAt;
+```
+
+`#[DateFormat]` sets a custom output pattern (a native PHP date format string) for date-time, date and time properties. The same pattern drives both directions — export via `format()`, import via `DateTimeImmutable::createFromFormat()`, strictly, with no fallback to constructor parsing — so a pattern capturing the full value roundtrips losslessly, and a lossy pattern (e.g. without seconds) zeroes the uncaptured parts deterministically instead of crashing:
+
+```php
+#[DateFormat('U')]                      // unix timestamp
+public DateTimeImmutable $syncedAt;
+```
+
+`#[DateFormat]` is deliberately not available for `DateInterval`: `DateInterval::format()` has no parsing counterpart in PHP, so the bidirectional promise could not be kept — exotic interval renderings belong to a custom format subclass.
+
+Both attributes are scoped like `#[Name]` and mutually exclusive per (property, format) — one property may combine a strict fraction for databases with a pattern for JSON:
+
+```php
+#[Fraction(3, formats: [DatabaseFormat::class])]
+#[DateFormat('d.m.Y H:i', formats: [Json::class])]
+public DateTimeImmutable $mixedUse;
+```
+
+> [!NOTE]
+> With `#[Fraction]` or `#[DateFormat]` the NetteDatabase format exports a finished string instead of the instance — Nette's own `'Y-m-d H:i:s'` formatting would drop the fraction, which is the very motivation: `DATETIME(6)` columns keep their microseconds.
 
 ## Tests
 
