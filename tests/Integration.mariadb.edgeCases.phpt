@@ -7,6 +7,7 @@ use JakubBoucek\Hydrator\Format\Mysql;
 use JakubBoucek\Hydrator\Format\NetteDatabase;
 use JakubBoucek\Hydrator\Hydrator;
 use JakubBoucek\Hydrator\Tests\Fixtures\EdgeCaseLossy;
+use JakubBoucek\Hydrator\Tests\Fixtures\EdgeCaseNumbers;
 use JakubBoucek\Hydrator\Tests\Fixtures\EdgeCaseSafe;
 use JakubBoucek\Hydrator\Tests\Fixtures\EdgeCaseStrict;
 use JakubBoucek\Hydrator\Tests\Support\Mariadb;
@@ -73,32 +74,48 @@ test('a non-nullable property over a zero date fails loudly, not silently', func
     );
 });
 
-test('KNOWN TRAP: the Mysql format parses raw zero-date strings into a nonsense PHP date', function () use ($pdo, $prague): void {
+test('raw zero-date strings hydrate as null with a warning (parity with Nette)', function () use ($pdo, $prague): void {
     $hydrator = new Hydrator(EdgeCaseLossy::class, Mysql::class, $prague);
     $row = $pdo->query('SELECT * FROM ' . TABLE . ' WHERE id = 1')->fetch(PDO::FETCH_ASSOC);
 
-    $entity = $hydrator->fromData($row);
+    $entity = null;
+    Assert::error(function () use (&$entity, $hydrator, $row): void {
+        $entity = $hydrator->fromData($row);
+    }, [
+        [E_USER_WARNING, "~Zero date '0000-00-00' in field 'zero_date'~"],
+        [E_USER_WARNING, "~Zero date '0000-00-00 00:00:00' in field 'zero_stamp'~"],
+    ]);
 
-    // documented current behavior: PHP rolls '0000-00-00' over to -0001-11-30
-    // (nette/database shields its users by converting to null; raw PDO users
-    // must treat zero dates themselves — or map the column as ?string)
-    Assert::same('-0001-11-30', $entity->zeroDate->format('Y-m-d'));
-    Assert::same('-0001-11-30 00:00:00', $entity->zeroStamp->format('Y-m-d H:i:s'));
+    Assert::null($entity->zeroDate);
+    Assert::null($entity->zeroStamp);
+});
+
+test('a non-nullable property over a raw zero date warns and fails loudly', function () use ($pdo, $prague): void {
+    $hydrator = new Hydrator(EdgeCaseStrict::class, Mysql::class, $prague);
+    $row = $pdo->query('SELECT * FROM ' . TABLE . ' WHERE id = 1')->fetch(PDO::FETCH_ASSOC);
+
+    Assert::error(function () use ($hydrator, $row): void {
+        Assert::exception(
+            fn() => $hydrator->fromData($row),
+            HydrationException::class,
+            "~Field 'zero_stamp' is null but property .*::\\\$zeroStamp is not nullable~",
+        );
+    }, E_USER_WARNING, '~Zero date~');
 });
 
 test('KNOWN TRAP: unsigned BIGINT beyond PHP_INT_MAX saturates in an int property', function () use ($pdo, $explorer, $prague): void {
     // both access paths deliver the out-of-range value as a string,
     // the int cast then silently saturates at PHP_INT_MAX
-    $mysql = new Hydrator(EdgeCaseLossy::class, Mysql::class, $prague);
+    $mysql = new Hydrator(EdgeCaseNumbers::class, Mysql::class, $prague);
     $row = $pdo->query('SELECT * FROM ' . TABLE . ' WHERE id = 1')->fetch(PDO::FETCH_ASSOC);
     Assert::same(PHP_INT_MAX, $mysql->fromData($row)->bigUnsigned);
 
-    $nette = new Hydrator(EdgeCaseLossy::class, NetteDatabase::class, $prague);
+    $nette = new Hydrator(EdgeCaseNumbers::class, NetteDatabase::class, $prague);
     Assert::same(PHP_INT_MAX, $nette->fromData($explorer->table(TABLE)->get(1))->bigUnsigned);
 });
 
 test('KNOWN LIMIT: DECIMAL(20,4) loses precision in a float property', function () use ($pdo, $prague): void {
-    $hydrator = new Hydrator(EdgeCaseLossy::class, Mysql::class, $prague);
+    $hydrator = new Hydrator(EdgeCaseNumbers::class, Mysql::class, $prague);
     $row = $pdo->query('SELECT * FROM ' . TABLE . ' WHERE id = 1')->fetch(PDO::FETCH_ASSOC);
 
     Assert::same(12345678901234.568, $hydrator->fromData($row)->exactPrice);

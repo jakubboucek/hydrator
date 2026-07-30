@@ -26,6 +26,14 @@ class EdgeCaseLossy implements Entity
     public float $exactPrice;
 }
 
+/** Numeric traps in isolation (no zero-date fields, no warnings). */
+class EdgeCaseNumbers implements Entity
+{
+    public int $id;
+    public int $bigUnsigned;
+    public float $exactPrice;
+}
+
 /** Recommended legacy mappings: string properties keep values exact. */
 class EdgeCaseSafe implements Entity
 {

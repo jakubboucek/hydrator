@@ -182,12 +182,13 @@ The library targets legacy projects too (no big ORM); edge cases are not
 necessarily *solved* — speed and simplicity win — but they must be *known*
 and failures loud. See `tests/Integration.mariadb.edgeCases.phpt`:
 
-- **Zero dates** (`'0000-00-00'`): nette/database converts them to null
-  (nullable property required; non-nullable fails loudly). The Mysql
-  format currently parses the raw string into a nonsense `-0001-11-30`
-  PHP date — documented trap; raw-PDO users must handle zero dates
-  themselves or map the column as `?string`. Open question: should the
-  Mysql format reject/null them explicitly (parity with Nette)?
+- **Zero dates** (`'0000-00-00'`): hydrate as null with an
+  `E_USER_WARNING` (decision 2026-07-30; engine-level for DateTime/Date
+  kinds on every format — parity with nette/database, which nulls them
+  itself before we see them). Nullable property → null, non-nullable →
+  the standard loud HydrationException. Without this, PHP would silently
+  parse the raw string into a nonsense `-0001-11-30` date. Mapping the
+  column as `?string` keeps the raw value exact.
 - **Unsigned BIGINT beyond PHP_INT_MAX**: arrives as string on every
   path, the int cast silently saturates at PHP_INT_MAX — map such
   columns as `string`.
