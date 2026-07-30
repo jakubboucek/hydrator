@@ -9,6 +9,7 @@ use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
 use Exception;
+use JakubBoucek\Hydrator\Attribute\Fraction;
 use JakubBoucek\Hydrator\Exception\ValueException;
 use JakubBoucek\Hydrator\NameConverter;
 use JakubBoucek\Hydrator\SnakeCaseConverter;
@@ -94,7 +95,11 @@ abstract class Format implements FormatScope
         );
     }
 
-    abstract public function exportDateTime(DateTimeImmutable $value, DateTimeZone $timeZone): mixed;
+    abstract public function exportDateTime(
+        DateTimeImmutable $value,
+        DateTimeZone $timeZone,
+        ?Fraction $fraction = null,
+    ): mixed;
 
     /**
      * @throws ValueException
@@ -144,15 +149,9 @@ abstract class Format implements FormatScope
      * The wall clock of the value itself; the time zone is never converted
      * (a year-1 instant has no meaningful zone arithmetic).
      */
-    public function exportTime(DateTimeImmutable $value, DateTimeZone $timeZone): mixed
+    public function exportTime(DateTimeImmutable $value, DateTimeZone $timeZone, ?Fraction $fraction = null): mixed
     {
-        $time = $value->format('H:i:s');
-
-        if ((int) $value->format('u') > 0) {
-            $time .= rtrim($value->format('.u'), '0');
-        }
-
-        return $time;
+        return $value->format('H:i:s') . $this->fractionSuffix($value->format('u'), $fraction);
     }
 
     /**
@@ -189,24 +188,40 @@ abstract class Format implements FormatScope
     /**
      * @throws ValueException
      */
-    public function exportInterval(DateInterval $value): mixed
+    public function exportInterval(DateInterval $value, ?Fraction $fraction = null): mixed
     {
         if ($value->y !== 0 || $value->m !== 0) {
             throw new ValueException('Cannot export an interval with a year or month part as time.');
         }
 
-        $time = sprintf(
+        return sprintf(
             '%s%02d:%02d:%02d',
             $value->invert === 1 ? '-' : '',
             $value->d * 24 + $value->h,
             $value->i,
             $value->s,
-        );
+        ) . $this->fractionSuffix(sprintf('%06d', (int) floor($value->f * 1_000_000)), $fraction);
+    }
 
-        if ($value->f > 0.0) {
-            $time .= substr(rtrim(rtrim(sprintf('%.6F', $value->f), '0'), '.'), 1);
+    /**
+     * Renders the fraction part from a six-digit microseconds string.
+     * Without a Fraction attribute the default heuristic applies: append
+     * the trimmed fraction when non-zero. With it the rendering is strict:
+     * exactly `digits` places (truncated, zero-padded), `digits: 0` never,
+     * `omitZero` drops a zero-valued part.
+     */
+    final protected function fractionSuffix(string $microseconds, ?Fraction $fraction): string
+    {
+        if ($fraction === null) {
+            return (int) $microseconds > 0 ? rtrim('.' . $microseconds, '0') : '';
         }
 
-        return $time;
+        if ($fraction->digits === 0) {
+            return '';
+        }
+
+        $digits = substr(str_pad($microseconds, 6, '0'), 0, $fraction->digits);
+
+        return $fraction->omitZero && (int) $digits === 0 ? '' : '.' . $digits;
     }
 }

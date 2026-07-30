@@ -11,6 +11,7 @@ use DateTimeInterface;
 use DateTimeZone;
 use Generator;
 use JakubBoucek\Hydrator\Attribute\FormatScoped;
+use JakubBoucek\Hydrator\Attribute\Fraction;
 use JakubBoucek\Hydrator\Attribute\Name;
 use JakubBoucek\Hydrator\Attribute\Type;
 use JakubBoucek\Hydrator\Exception\HydrationException;
@@ -231,10 +232,12 @@ final class Hydrator
             try {
                 $data[$slot->fieldName] = match ($slot->kind) {
                     ValueKind::Bool => $this->format->exportBool($this->expectBool($value)),
-                    ValueKind::DateTime => $this->format->exportDateTime($this->expectDateTime($value), $this->timeZone),
+                    ValueKind::DateTime
+                        => $this->format->exportDateTime($this->expectDateTime($value), $this->timeZone, $slot->fraction),
                     ValueKind::Date => $this->format->exportDate($this->expectDateTime($value), $this->timeZone),
-                    ValueKind::Time => $this->format->exportTime($this->expectDateTime($value), $this->timeZone),
-                    ValueKind::Interval => $this->format->exportInterval($this->expectInterval($value)),
+                    ValueKind::Time
+                        => $this->format->exportTime($this->expectDateTime($value), $this->timeZone, $slot->fraction),
+                    ValueKind::Interval => $this->format->exportInterval($this->expectInterval($value), $slot->fraction),
                     ValueKind::Enum => $this->expectEnum($value)->value,
                     default => $value,
                 };
@@ -373,6 +376,22 @@ final class Hydrator
             $enumBackedByInt = $backingType instanceof ReflectionNamedType && $backingType->getName() === 'int';
         }
 
+        $fraction = $this->resolveScopedAttribute($property, Fraction::class);
+        if ($fraction !== null) {
+            if ($fraction->digits < 0 || $fraction->digits > 6) {
+                throw new MetadataException(
+                    '#[Fraction] digits must be between 0 and 6 (PHP microsecond precision),'
+                    . " got {$fraction->digits} on {$this->entityClass}::\${$name}.",
+                );
+            }
+            if (!in_array($kind, [ValueKind::DateTime, ValueKind::Time, ValueKind::Interval], true)) {
+                throw new MetadataException(
+                    '#[Fraction] is only allowed on date-time, time and interval properties,'
+                    . " found on {$this->entityClass}::\${$name}.",
+                );
+            }
+        }
+
         return new PropertySlot(
             name: $name,
             fieldName: $this->resolveFieldName($property),
@@ -383,6 +402,7 @@ final class Hydrator
             hasDefault: $property->hasDefaultValue(),
             writable: $writable,
             readable: $readable,
+            fraction: $fraction,
             reflection: $property,
         );
     }

@@ -6,6 +6,7 @@ namespace JakubBoucek\Hydrator\Format;
 
 use DateTimeImmutable;
 use DateTimeZone;
+use JakubBoucek\Hydrator\Attribute\Fraction;
 use JakubBoucek\Hydrator\Exception\ValueException;
 
 /**
@@ -35,9 +36,14 @@ class Mysql extends Format implements DatabaseFormat
         return $value ? 1 : 0;
     }
 
-    public function exportDateTime(DateTimeImmutable $value, DateTimeZone $timeZone): mixed
+    public function exportDateTime(DateTimeImmutable $value, DateTimeZone $timeZone, ?Fraction $fraction = null): mixed
     {
-        return $value->setTimezone($timeZone)->format('Y-m-d H:i:s');
+        $value = $value->setTimezone($timeZone);
+
+        // date-times render without a fraction by default (DATETIME), the
+        // Fraction attribute switches the column to DATETIME(n) semantics
+        return $value->format('Y-m-d H:i:s')
+            . ($fraction === null ? '' : $this->fractionSuffix($value->format('u'), $fraction));
     }
 
     public function exportDate(DateTimeImmutable $value, DateTimeZone $timeZone): mixed

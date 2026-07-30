@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace JakubBoucek\Hydrator\Metadata;
 
+use JakubBoucek\Hydrator\Attribute\Fraction;
 use ReflectionProperty;
 
 /**
@@ -24,6 +25,7 @@ final readonly class PropertySlot
         public bool $hasDefault,
         public bool $writable,
         public bool $readable,
+        public ?Fraction $fraction,
         public ReflectionProperty $reflection,
     ) {
     }

@@ -7,6 +7,7 @@ namespace JakubBoucek\Hydrator\Format;
 use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
+use JakubBoucek\Hydrator\Attribute\Fraction;
 use JakubBoucek\Hydrator\Exception\ValueException;
 use JakubBoucek\Hydrator\IdentityConverter;
 use JakubBoucek\Hydrator\NameConverter;
@@ -37,9 +38,18 @@ class Json extends Format
         return $value;
     }
 
-    public function exportDateTime(DateTimeImmutable $value, DateTimeZone $timeZone): mixed
+    public function exportDateTime(DateTimeImmutable $value, DateTimeZone $timeZone, ?Fraction $fraction = null): mixed
     {
-        return $value->setTimezone($timeZone)->format(DateTimeInterface::RFC3339);
+        $value = $value->setTimezone($timeZone);
+
+        if ($fraction === null) {
+            return $value->format(DateTimeInterface::RFC3339);
+        }
+
+        // RFC 3339 with the fraction between seconds and offset
+        return $value->format('Y-m-d\TH:i:s')
+            . $this->fractionSuffix($value->format('u'), $fraction)
+            . $value->format('P');
     }
 
     public function exportDate(DateTimeImmutable $value, DateTimeZone $timeZone): mixed

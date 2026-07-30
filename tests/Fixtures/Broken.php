@@ -7,6 +7,7 @@ namespace JakubBoucek\Hydrator\Tests\Fixtures;
 use JakubBoucek\Hydrator\Entity;
 
 use DateTime;
+use JakubBoucek\Hydrator\Attribute\Fraction;
 use JakubBoucek\Hydrator\Attribute\Name;
 use JakubBoucek\Hydrator\Attribute\Type;
 use JakubBoucek\Hydrator\Format\Mysql;
@@ -50,5 +51,17 @@ class BrokenUnreachableName implements Entity
 class BrokenUnknownScope implements Entity
 {
     #[Name('col', ['NonExistent\FormatClass'])]
+    public string $value;
+}
+
+class BrokenFractionDigits implements Entity
+{
+    #[Fraction(7)]
+    public \DateTimeImmutable $measuredAt;
+}
+
+class BrokenFractionOnString implements Entity
+{
+    #[Fraction(3)]
     public string $value;
 }

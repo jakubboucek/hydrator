@@ -7,6 +7,7 @@ namespace JakubBoucek\Hydrator\Format;
 use DateInterval;
 use DateTimeImmutable;
 use DateTimeZone;
+use JakubBoucek\Hydrator\Attribute\Fraction;
 use JakubBoucek\Hydrator\Exception\ValueException;
 use Throwable;
 
@@ -27,9 +28,12 @@ class NetteDatabase extends Mysql
         return $value;
     }
 
-    public function exportDateTime(DateTimeImmutable $value, DateTimeZone $timeZone): mixed
+    public function exportDateTime(DateTimeImmutable $value, DateTimeZone $timeZone, ?Fraction $fraction = null): mixed
     {
-        return $value;
+        // with a Fraction attribute the instance pass-through would lose the
+        // fraction in Nette's own 'Y-m-d H:i:s' formatting — export a
+        // finished string instead
+        return $fraction === null ? $value : parent::exportDateTime($value, $timeZone, $fraction);
     }
 
     public function exportDate(DateTimeImmutable $value, DateTimeZone $timeZone): mixed
@@ -37,9 +41,10 @@ class NetteDatabase extends Mysql
         return $value;
     }
 
-    public function exportInterval(DateInterval $value): mixed
+    public function exportInterval(DateInterval $value, ?Fraction $fraction = null): mixed
     {
-        return $value;
+        // same as date-times: Nette formats DateInterval without fractions
+        return $fraction === null ? $value : parent::exportInterval($value, $fraction);
     }
 
     /**
