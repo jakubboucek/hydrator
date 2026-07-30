@@ -176,6 +176,26 @@ nette/database) — see its `docs/roadmap.md`, section "Typové entity a
 de/hydratace". Performance target: parity with the POC harness
 (`bin/poc-hydration.php` in branch `poc-hydration` there, ~490k rows/s).
 
+## Legacy edge cases (documented by tests, 2026-07-30)
+
+The library targets legacy projects too (no big ORM); edge cases are not
+necessarily *solved* — speed and simplicity win — but they must be *known*
+and failures loud. See `tests/Integration.mariadb.edgeCases.phpt`:
+
+- **Zero dates** (`'0000-00-00'`): nette/database converts them to null
+  (nullable property required; non-nullable fails loudly). The Mysql
+  format currently parses the raw string into a nonsense `-0001-11-30`
+  PHP date — documented trap; raw-PDO users must handle zero dates
+  themselves or map the column as `?string`. Open question: should the
+  Mysql format reject/null them explicitly (parity with Nette)?
+- **Unsigned BIGINT beyond PHP_INT_MAX**: arrives as string on every
+  path, the int cast silently saturates at PHP_INT_MAX — map such
+  columns as `string`.
+- **DECIMAL with >15 significant digits**: lossy in a `float` property —
+  map as `string` where exactness matters (money).
+- **PDO since PHP 8.1** returns native int/float by default; the legacy
+  stringified mode (`ATTR_STRINGIFY_FETCHES`) is covered by tests too.
+
 ## Conventions
 
 - Scaffold follows `jakubboucek/nette-http-request-strict-proxy`: Nette
