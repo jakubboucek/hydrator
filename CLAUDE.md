@@ -20,6 +20,21 @@ docker compose run --rm php composer phpstan
 docker compose run --rm php85 composer test   # PHP 8.5 variant
 ```
 
+MariaDB integration tests (`tests/Integration.mariadb.*`) run only with
+`DATABASE_DSN` set and skip otherwise. Locally:
+
+```shell
+docker compose up -d mysqldb
+docker compose run --rm -e DATABASE_DSN='mysql:host=mysqldb;dbname=hydrator_test;charset=utf8mb4' php composer test
+```
+
+(User/password default to root/devstack; override with `DATABASE_USER`/
+`DATABASE_PASSWORD`.) In CI they run as the dedicated "Integration tests"
+job with a MariaDB 10.6 service container. Each test file owns its table —
+Tester runs files in parallel. MariaDB 10.6 is the lowest devstack image;
+the JSON column (LONGTEXT alias + json_valid check) is supported
+everywhere since 10.2.7.
+
 GitHub Actions run natively (no Docker needed there). CI marks lowest-deps
 jobs `continue-on-error` — the run may look green while they fail, so
 always check per-job conclusions (`gh run view <id> --json jobs`).
@@ -160,6 +175,27 @@ First real consumer: project Lexion (infosoud-checker; PHP 8.5,
 nette/database) — see its `docs/roadmap.md`, section "Typové entity a
 de/hydratace". Performance target: parity with the POC harness
 (`bin/poc-hydration.php` in branch `poc-hydration` there, ~490k rows/s).
+
+## Legacy edge cases (documented by tests, 2026-07-30)
+
+The library targets legacy projects too (no big ORM); edge cases are not
+necessarily *solved* — speed and simplicity win — but they must be *known*
+and failures loud. See `tests/Integration.mariadb.edgeCases.phpt`:
+
+- **Zero dates** (`'0000-00-00'`): hydrate as null with an
+  `E_USER_WARNING` (decision 2026-07-30; engine-level for DateTime/Date
+  kinds on every format — parity with nette/database, which nulls them
+  itself before we see them). Nullable property → null, non-nullable →
+  the standard loud HydrationException. Without this, PHP would silently
+  parse the raw string into a nonsense `-0001-11-30` date. Mapping the
+  column as `?string` keeps the raw value exact.
+- **Unsigned BIGINT beyond PHP_INT_MAX**: arrives as string on every
+  path, the int cast silently saturates at PHP_INT_MAX — map such
+  columns as `string`.
+- **DECIMAL with >15 significant digits**: lossy in a `float` property —
+  map as `string` where exactness matters (money).
+- **PDO since PHP 8.1** returns native int/float by default; the legacy
+  stringified mode (`ATTR_STRINGIFY_FETCHES`) is covered by tests too.
 
 ## Conventions
 

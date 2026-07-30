@@ -85,6 +85,8 @@ Property names map to field names by convention (camelCase ↔ snake_case by def
 
 Every writable property requires its field in data: a missing field, a `null` for a non-nullable property or a value of an unexpected type throws an exception with the entity class, property and field name in the message. Extra fields in data with no matching property are silently ignored, and fields of non-writable properties (`readonly`, `private(set)`, virtual get-only) are never required. All library exceptions implement the `JakubBoucek\Hydrator\Exception\HydratorException` marker interface.
 
+Legacy zero dates (`'0000-00-00'`, `'0000-00-00 00:00:00'`) hydrate as `null` with an `E_USER_WARNING` — matching nette/database's behavior — so a non-nullable property over such data fails loudly instead of receiving a nonsense date.
+
 ## Formats
 
 A *format* describes how values are represented in data: the field naming convention and the codecs for booleans, date-times, dates and intervals. Formats are stateless and identified by their class name:
@@ -216,6 +218,8 @@ composer install
 composer run test
 composer run phpstan
 ```
+
+Integration tests against a real MariaDB server (common column types over PDO, mysqli and nette/database in every `convertBoolean`/`newDateTime` configuration) run when `DATABASE_DSN` (plus optional `DATABASE_USER`/`DATABASE_PASSWORD`) points to a server, and skip otherwise.
 
 ## License
 

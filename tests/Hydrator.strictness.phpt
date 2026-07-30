@@ -91,6 +91,45 @@ test('invalid values are wrapped with property context', function (): void {
     );
 });
 
+test('legacy zero dates hydrate as null with a warning', function (): void {
+    $hydrator = new Hydrator(JakubBoucek\Hydrator\Tests\Fixtures\Measurement::class, Mysql::class);
+    $row = [
+        'id' => 1,
+        'measured_at' => '2026-07-29 10:30:00',
+        'processed_at' => '0000-00-00 00:00:00', // nullable property
+        'window_start' => '08:30:00',
+        'elapsed' => '00:01:00',
+    ];
+
+    $entity = null;
+    Assert::error(function () use (&$entity, $hydrator, $row): void {
+        $entity = $hydrator->fromData($row);
+    }, E_USER_WARNING, "~Zero date '0000-00-00 00:00:00' in field 'processed_at'.*as null~");
+    Assert::null($entity->processedAt);
+
+    // non-nullable property: the warning is followed by a loud failure
+    $strict = new Hydrator(Article::class, Mysql::class);
+    Assert::error(function () use ($strict): void {
+        Assert::exception(
+            fn() => $strict->fromData([
+                'id' => 1,
+                'title' => 't',
+                'note' => null,
+                'published' => '1',
+                'created_at' => '2026-01-01 00:00:00',
+                'published_on' => '0000-00-00',
+                'reading_time' => '00:01:00',
+                'status' => 'draft',
+                'level' => '1',
+                'view_count' => '0',
+                'raw_meta' => null,
+            ]),
+            HydrationException::class,
+            "~Field 'published_on' is null but property .*::\\\$publishedOn is not nullable~",
+        );
+    }, E_USER_WARNING, '~Zero date~');
+});
+
 test('foreign instances are rejected', function (): void {
     $hydrator = new Hydrator(SimpleEntity::class, NetteDatabase::class);
 

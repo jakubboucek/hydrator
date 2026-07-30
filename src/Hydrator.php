@@ -119,6 +119,20 @@ final class Hydrator
 
             $value = $row[$slot->fieldName];
 
+            // legacy zero dates hydrate as null (parity with nette/database),
+            // loudly — the data cannot be represented by a DateTimeImmutable
+            if (($slot->kind === ValueKind::DateTime || $slot->kind === ValueKind::Date)
+                && is_string($value)
+                && str_starts_with($value, '0000-00')
+            ) {
+                trigger_error(
+                    "Zero date '{$value}' in field '{$slot->fieldName}' is not supported,"
+                    . " hydrating property {$this->entityClass}::\${$name} as null.",
+                    E_USER_WARNING,
+                );
+                $value = null;
+            }
+
             if ($value === null) {
                 if ($slot->nullable) {
                     $entity->$name = null;
