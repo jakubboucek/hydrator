@@ -204,6 +204,15 @@ and failures loud. See `tests/Integration.mariadb.edgeCases.phpt`:
   (`treatPhpDocTypesAsCertain: false` — runtime guards on PHPDoc-certain
   types are intentional), no coding-standard tool, `code_analysis.yaml`
   workflow, `.gitattributes` export-ignore, MIT.
+- **Final policy** (decision 2026-07-30): classes are open by default —
+  the real encapsulation is `private` internals (a subclass can only
+  wrap or replace the public API), and open classes keep the escape
+  hatch for test fakes and behavior fixes in consumers (there are no
+  service interfaces by design). `final` stays only where a subclass
+  provably cannot work: **attributes** (the scoped-attribute resolver
+  matches exact classes — a subclass would be silently ignored),
+  **`Format::__construct`** (statelessness + class-string identity
+  contract) and `@internal` metadata classes. Enums are final by nature.
 - **Dependency constraints policy**: quality-check tools (phpstan/phpstan,
   nette/tester) are pinned to exact versions incl. patch — they execute
   the tests, they are not their subject, and a tool version drift must

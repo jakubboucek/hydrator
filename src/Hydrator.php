@@ -44,9 +44,13 @@ use ValueError;
  * property are silently ignored. Fields of non-writable properties
  * (readonly, private(set), virtual get-only) are never required.
  *
+ * The class is deliberately not final (internals stay private, so a
+ * subclass can only wrap or replace the public API — an escape hatch for
+ * fakes in tests or behavior fixes), see the final policy in CLAUDE.md.
+ *
  * @template T of Entity
  */
-final class Hydrator
+class Hydrator
 {
     private readonly Format $format;
 

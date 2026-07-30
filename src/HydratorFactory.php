@@ -12,7 +12,7 @@ use JakubBoucek\Hydrator\Format\Format;
  * time zone and a cache of Hydrator instances per (entity class, format).
  * Register as a service in DI.
  */
-final class HydratorFactory
+class HydratorFactory
 {
     /** @var array<string, Hydrator<covariant Entity>> */
     private array $hydrators = [];
