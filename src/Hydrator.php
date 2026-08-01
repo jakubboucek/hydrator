@@ -84,6 +84,9 @@ class Hydrator
     /** @var array<string, PropertySlot> */
     private array $slots;
 
+    /** @var array<string, true> */
+    private array $expectedFields;
+
     /**
      * @param class-string<T> $entityClass
      * @param class-string<Format> $format
@@ -121,20 +124,45 @@ class Hydrator
      *
      * Every writable property requires its field in data — a missing field
      * throws a HydrationException. Extra fields with no matching property
-     * are silently ignored.
+     * are silently ignored. Both rules have per-call switches:
+     *
+     * - `allowPartial`: missing fields are tolerated and the corresponding
+     *   properties stay uninitialized — the input mirror of the
+     *   partial-update extraction (a sparse SELECT hydrates a sparse
+     *   entity). Combined with `$into` it acts as a merge: absent fields
+     *   keep the target's current values. Beware: the strict default
+     *   catches column-name typos, allowPartial does not — pair it with
+     *   `rejectUnknown` to keep that protection.
+     * - `rejectUnknown`: a data key that maps to no entity property throws
+     *   (expected keys are the fields of all mapped properties, including
+     *   non-writable ones, which extraction produces).
      *
      * @param iterable<string, mixed> $data
      * @param T|null $into Existing instance to re-hydrate into.
      * @return T
      */
-    public function fromData(iterable $data, ?Entity $into = null): Entity
-    {
+    public function fromData(
+        iterable $data,
+        ?Entity $into = null,
+        bool $allowPartial = false,
+        bool $rejectUnknown = false,
+    ): Entity {
         $row = is_array($data) ? $data : iterator_to_array($data);
 
         if ($into !== null && !$into instanceof $this->entityClass) {
             throw new InvalidEntityException(
                 "Target instance must be a '{$this->entityClass}', got '" . $into::class . "'.",
             );
+        }
+
+        if ($rejectUnknown) {
+            $unknown = array_diff_key($row, $this->expectedFields());
+            if ($unknown !== []) {
+                throw new HydrationException(
+                    "Unknown fields '" . implode("', '", array_keys($unknown))
+                    . "' in data for {$this->entityClass}.",
+                );
+            }
         }
 
         /** @var T $entity */
@@ -146,6 +174,9 @@ class Hydrator
             }
 
             if (!array_key_exists($slot->fieldName, $row)) {
+                if ($allowPartial) {
+                    continue;
+                }
                 throw new HydrationException(
                     "Missing field '{$slot->fieldName}' in data for property {$this->entityClass}::\${$name}.",
                 );
@@ -224,8 +255,12 @@ class Hydrator
      * @param iterable<mixed> $dataSet
      * @return Generator<int|string, T>
      */
-    public function fromDataSet(iterable $dataSet, ?string $keyBy = null): Generator
-    {
+    public function fromDataSet(
+        iterable $dataSet,
+        ?string $keyBy = null,
+        bool $allowPartial = false,
+        bool $rejectUnknown = false,
+    ): Generator {
         $keyBy ??= $this->format->detectKeyField($dataSet);
 
         foreach ($dataSet as $data) {
@@ -238,7 +273,7 @@ class Hydrator
             $row = is_array($data) ? $data : iterator_to_array($data);
 
             if ($keyBy === null) {
-                yield $this->fromData($row);
+                yield $this->fromData($row, allowPartial: $allowPartial, rejectUnknown: $rejectUnknown);
                 continue;
             }
 
@@ -248,7 +283,7 @@ class Hydrator
 
             /** @var int|string $key */
             $key = $row[$keyBy];
-            yield $key => $this->fromData($row);
+            yield $key => $this->fromData($row, allowPartial: $allowPartial, rejectUnknown: $rejectUnknown);
         }
     }
 
@@ -632,6 +667,25 @@ class Hydrator
     private function slots(): array
     {
         return $this->slots ??= $this->buildSlots();
+    }
+
+    /**
+     * Fields of all mapped properties (including non-writable ones) —
+     * the set of known keys for the rejectUnknown check.
+     *
+     * @return array<string, true>
+     */
+    private function expectedFields(): array
+    {
+        if (!isset($this->expectedFields)) {
+            $fields = [];
+            foreach ($this->slots() as $slot) {
+                $fields[$slot->fieldName] = true;
+            }
+            $this->expectedFields = $fields;
+        }
+
+        return $this->expectedFields;
     }
 
     /**

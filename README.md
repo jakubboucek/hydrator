@@ -93,6 +93,13 @@ Every writable property requires its field in data: a missing field, a `null` fo
 
 Legacy zero dates (`'0000-00-00'`, `'0000-00-00 00:00:00'`) hydrate as `null` with an `E_USER_WARNING` — matching nette/database's behavior — so a non-nullable property over such data fails loudly instead of receiving a nonsense date.
 
+Both strictness rules have explicit, per-call switches on `fromData()`/`fromDataSet()`:
+
+- **`allowPartial: true`** tolerates missing fields — the corresponding properties stay *uninitialized*, mirroring the partial extraction: a sparse `SELECT id, title` hydrates a sparse entity whose `toData()` produces exactly those fields back. Combined with `into:` it acts as a merge/patch — absent fields keep the target's current values. Beware that the strict default is what catches column-name typos; pair `allowPartial` with `rejectUnknown` to keep that protection.
+- **`rejectUnknown: true`** tightens the opposite direction: a data key that maps to no entity property throws (known keys cover all mapped properties including the non-writable ones, so a full-row roundtrip passes).
+
+There is deliberately no factory-wide default for either switch — tolerance is a per-call decision, not a mode.
+
 ## Formats
 
 A *format* describes how values are represented in data: the field naming convention and the codecs for booleans, date-times, dates and intervals. Formats are stateless and identified by their class name:

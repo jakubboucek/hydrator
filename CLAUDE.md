@@ -132,7 +132,16 @@ namespace to coexist); families live in `Converter\`, `Struct\`,
   pass-through formats hand instances back unchanged.
 - **Partial-update semantics**: extraction skips uninitialized properties
   (initialized null → field null). Completeness is never enforced by
-  hydration/extraction.
+  hydration/extraction. Input switches (2026-08-01, per-call only — no
+  factory-wide default, that would be the tolerant-sponge anti-pattern):
+  `allowPartial` tolerates missing fields (properties stay uninitialized;
+  the input mirror of partial extraction; with `into:` = merge/patch,
+  absent fields keep current values; struct always-instance rule applies
+  only to present fields), `rejectUnknown` throws on data keys mapping to
+  no property (known = fields of all mapped properties incl. non-writable
+  — extraction produces them; implemented as one array_diff_key against a
+  precomputed field set, zero cost when off). allowPartial alone loses
+  typo detection — pairing with rejectUnknown restores it.
 - **No validation API** (removed 2026-07-29 after review): the earlier
   `isComplete()`/`validate()`/`SelfValidating` conflated three different
   material questions — insert-readiness (DB schema will accept the row),
