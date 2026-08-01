@@ -49,6 +49,19 @@ final class Mariadb
     }
 
     /**
+     * An additional connection to an existing per-test-file database
+     * (e.g. with different PDO options).
+     *
+     * @param array<int, mixed> $options
+     */
+    public static function pdoFor(string $suffix, array $options = []): PDO
+    {
+        return new PDO(self::dsnFor($suffix), self::user(), self::password(), $options + [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        ]);
+    }
+
+    /**
      * The DSN pointing to the per-test-file database.
      */
     public static function dsnFor(string $suffix): string

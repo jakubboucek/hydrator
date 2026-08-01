@@ -25,7 +25,7 @@ test('hydrates a PDO row in the default mode (native int/float since PHP 8.1)', 
 });
 
 test('hydrates a PDO row in the legacy stringified mode', function () use ($hydrator): void {
-    $stringified = Mariadb::pdo([PDO::ATTR_STRINGIFY_FETCHES => true]);
+    $stringified = Mariadb::pdoFor('pdo', [PDO::ATTR_STRINGIFY_FETCHES => true]);
     $row = $stringified->query('SELECT * FROM ' . TABLE . ' WHERE id = 1')->fetch(PDO::FETCH_ASSOC);
 
     Assert::same('42', $row['counter']); // sanity: really strings
