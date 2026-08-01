@@ -25,3 +25,8 @@ services:
             MARIADB_DATABASE: hydrator_test
             MARIADB_ROOT_PASSWORD: devstack
             TZ: Europe/Prague
+        healthcheck:
+            test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+            interval: 5s
+            timeout: 3s
+            retries: 15

@@ -12,7 +12,7 @@ require __DIR__ . '/bootstrap.php';
 
 const TABLE = 'data_row_pdo';
 
-$pdo = Mariadb::pdo();
+$pdo = Mariadb::freshDatabase('pdo');
 Mariadb::initSchema($pdo, TABLE);
 
 $hydrator = new Hydrator(DataRow::class, Mysql::class, new DateTimeZone('Europe/Prague'));

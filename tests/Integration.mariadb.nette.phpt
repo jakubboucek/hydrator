@@ -17,13 +17,13 @@ require __DIR__ . '/bootstrap.php';
 
 const TABLE = 'data_row_nette';
 
-Mariadb::initSchema(Mariadb::pdo(), TABLE);
+Mariadb::initSchema(Mariadb::freshDatabase('nette'), TABLE);
 
 $hydrator = new Hydrator(DataRow::class, NetteDatabase::class, new DateTimeZone('Europe/Prague'));
 
 function explorer(bool $convertBoolean, bool $newDateTime): Explorer
 {
-    $connection = new Connection(Mariadb::dsn(), Mariadb::user(), Mariadb::password(), [
+    $connection = new Connection(Mariadb::dsnFor('nette'), Mariadb::user(), Mariadb::password(), [
         'convertBoolean' => $convertBoolean,
         'newDateTime' => $newDateTime,
     ]);

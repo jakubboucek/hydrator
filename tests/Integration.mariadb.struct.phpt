@@ -18,7 +18,7 @@ require __DIR__ . '/bootstrap.php';
 
 const TABLE = 'parcel';
 
-$pdo = Mariadb::pdo();
+$pdo = Mariadb::freshDatabase('struct');
 $pdo->exec('DROP TABLE IF EXISTS ' . TABLE);
 $pdo->exec('CREATE TABLE ' . TABLE . ' (
     id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -33,7 +33,7 @@ $pdo->exec('INSERT INTO ' . TABLE . " (label, contact, tags, notes, meta) VALUES
      '[{\"text\":\"Zaplaceno\",\"author\":\"admin\",\"date\":\"2026-07-30 10:00:00\"}]', '{\"source\":\"import\",\"batch\":7}'),
     ('empty', NULL, NULL, NULL, NULL)");
 
-$connection = new Connection(Mariadb::dsn(), Mariadb::user(), Mariadb::password(), [
+$connection = new Connection(Mariadb::dsnFor('struct'), Mariadb::user(), Mariadb::password(), [
     'convertBoolean' => true,
     'newDateTime' => true,
 ]);

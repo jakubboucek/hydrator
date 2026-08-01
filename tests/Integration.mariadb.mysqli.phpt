@@ -17,9 +17,9 @@ if (!extension_loaded('mysqli')) {
 const TABLE = 'data_row_mysqli';
 
 // PDO helper has the connect-retry, so the server is warm for mysqli
-Mariadb::initSchema(Mariadb::pdo(), TABLE);
+Mariadb::initSchema(Mariadb::freshDatabase('mysqli'), TABLE);
 
-$params = Mariadb::dsnParams();
+$params = Mariadb::dsnParams(Mariadb::dsnFor('mysqli'));
 $mysqli = new mysqli($params['host'], Mariadb::user(), Mariadb::password(), $params['dbname'], $params['port']);
 
 $hydrator = new Hydrator(DataRow::class, Mysql::class, new DateTimeZone('Europe/Prague'));

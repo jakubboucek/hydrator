@@ -29,12 +29,48 @@ final class Mariadb
     }
 
     /**
+     * Creates a fresh, per-test-file database and returns a PDO connected to
+     * it. Isolation matters: Nette Structure enumerates every table of a
+     * database on load, so parallel test files sharing one database race
+     * each other's DROP/CREATE.
+     */
+    public static function freshDatabase(string $suffix): PDO
+    {
+        $name = self::databaseName($suffix);
+        $server = self::pdo();
+        $server->exec("DROP DATABASE IF EXISTS `{$name}`");
+        $server->exec("CREATE DATABASE `{$name}` CHARACTER SET utf8mb4");
+
+        $pdo = new PDO(self::dsnFor($suffix), self::user(), self::password(), [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        ]);
+
+        return $pdo;
+    }
+
+    /**
+     * The DSN pointing to the per-test-file database.
+     */
+    public static function dsnFor(string $suffix): string
+    {
+        $name = self::databaseName($suffix);
+        $dsn = (string) preg_replace('~dbname=[^;]*~', "dbname={$name}", self::dsn());
+
+        return str_contains($dsn, 'dbname=') ? $dsn : "{$dsn};dbname={$name}";
+    }
+
+    public static function databaseName(string $suffix): string
+    {
+        return "hydrator_test_{$suffix}";
+    }
+
+    /**
      * @return array{host: string, port: int, dbname: string}
      */
-    public static function dsnParams(): array
+    public static function dsnParams(?string $dsn = null): array
     {
         $params = ['host' => 'localhost', 'port' => 3306, 'dbname' => ''];
-        foreach (explode(';', substr(self::dsn(), strlen('mysql:'))) as $pair) {
+        foreach (explode(';', substr($dsn ?? self::dsn(), strlen('mysql:'))) as $pair) {
             [$key, $value] = explode('=', $pair, 2) + [1 => ''];
             if ($key === 'port') {
                 $params['port'] = (int) $value;

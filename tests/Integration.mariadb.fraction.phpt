@@ -18,10 +18,10 @@ require __DIR__ . '/bootstrap.php';
 
 const TABLE = 'data_row_fraction';
 
-$pdo = Mariadb::pdo();
+$pdo = Mariadb::freshDatabase('fraction');
 Mariadb::initSchema($pdo, TABLE);
 
-$connection = new Connection(Mariadb::dsn(), Mariadb::user(), Mariadb::password(), [
+$connection = new Connection(Mariadb::dsnFor('fraction'), Mariadb::user(), Mariadb::password(), [
     'convertBoolean' => true,
     'newDateTime' => true,
 ]);

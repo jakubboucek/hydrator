@@ -30,7 +30,7 @@ const TABLE = 'edge_case';
 
 $prague = new DateTimeZone('Europe/Prague');
 
-$pdo = Mariadb::pdo();
+$pdo = Mariadb::freshDatabase('edge');
 $pdo->exec('DROP TABLE IF EXISTS ' . TABLE);
 $pdo->exec('CREATE TABLE ' . TABLE . ' (
     id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -44,7 +44,7 @@ $pdo->exec('INSERT INTO ' . TABLE . " (zero_date, zero_stamp, big_unsigned, exac
     VALUES ('0000-00-00', '0000-00-00 00:00:00', 18446744073709551615, 12345678901234.5678)");
 
 $explorer = (function (): Explorer {
-    $connection = new Connection(Mariadb::dsn(), Mariadb::user(), Mariadb::password(), [
+    $connection = new Connection(Mariadb::dsnFor('edge'), Mariadb::user(), Mariadb::password(), [
         'convertBoolean' => true,
         'newDateTime' => true,
     ]);
