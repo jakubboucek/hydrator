@@ -18,6 +18,12 @@ General mapping libraries struggle with entities written in modern PHP style. Th
 - **Deterministic time zones** — every hydrated date-time is normalized into the application time zone.
 - **Performance** — reflection runs once per entity class; per-row work is a plain loop over precomputed metadata (hundreds of thousands of rows per second). The library never caches data or entities, only its own metadata: data sets are processed as lazy single-pass streams.
 
+### Built for gradual modernization
+
+The hydrator is designed to work as an intermediate step when modernizing a legacy application: it requires no change of the database-access paradigm and no changes to the database structure. Retrofitting Doctrine or another full ORM into a large existing codebase tends to be a demanding, all-or-nothing endeavor; typed entities backed by this library can instead be adopted piecemeal — one table or one query at a time — while the rest of the application keeps its existing database layer, making it a practical vehicle for refactoring database access gradually.
+
+The only hard requirement is PHP 8.4. For an older application that is usually a far smaller obstacle than a data-access rewrite: a PHP upgrade is well supported by automated tooling (such as Rector), whereas replacing the database layer of a grown codebase rarely is.
+
 ## Installation
 
 ```shell
