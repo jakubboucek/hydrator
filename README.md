@@ -115,6 +115,7 @@ What `toData()` produces for each property type:
 | `#[Type\Time]` | `'H:i:s'` <sup>3)</sup> | `'H:i:s'` <sup>3)</sup> | `'H:i:s'` <sup>3)</sup> |
 | `DateInterval` | instance <sup>1)</sup> | `'HH:MM:SS'` <sup>4)</sup> | `'HH:MM:SS'` <sup>4)</sup> |
 | `Struct` | JSON string <sup>5)</sup> | JSON string <sup>5)</sup> | nested array |
+| custom types | by native type | by native type | by native type |
 | `mixed` / untyped | as-is | as-is | as-is |
 
 <sup>1)</sup> Instance pass-through — the database layer formats it itself.\
@@ -139,6 +140,7 @@ What `fromData()` accepts for each property type:
 | `#[Type\Time]` | instance, `'HH:MM:SS'`, `DateInterval` <sup>8)</sup> | instance, `'HH:MM:SS'` <sup>8)</sup> | instance, `'HH:MM:SS'` <sup>8)</sup> |
 | `DateInterval` | instance, `'HH:MM:SS'` <sup>9)</sup> | instance, `'HH:MM:SS'` <sup>9)</sup> | instance, `'HH:MM:SS'` <sup>9)</sup> |
 | `Struct` | JSON string, `NULL` <sup>10)</sup> | JSON string, `NULL` <sup>10)</sup> | array, `null` <sup>10)</sup> |
+| custom types | by native type | by native type | by native type |
 | `mixed` / untyped | anything, as-is | anything, as-is | anything, as-is |
 
 <sup>6)</sup> `int` or `string`, cast to the enum backing type, mapped via `::from()`.\
@@ -257,6 +259,73 @@ Rules of the mechanism:
 - Structs must be constructible without arguments, and the array representation must stay plain JSON-serializable data — no objects inside (dates as strings).
 
 Bundled implementations: `BaseStruct` (declared fields; unknown keys are dropped and nulls filtered — documented lossy traits), `DynamicStruct` (lossless free-form, an stdClass analogy), and the list-shaped showcases `TagListStruct` and `NoteListStruct` (`add…`/`remove…`, iteration, `toText()`).
+
+## Custom types
+
+A custom type maps a domain value object to a single column through an *intermediate native type*: the value first passes the format codec of that native type — with all its strictness — and only then reaches the custom conversion. Custom types are therefore format-blind: the same type renders as `'Y-m-d H:i:s'` in Mysql, RFC 3339 in Json and an instance pass-through with nette/database, and how a bool or a date-time is represented never becomes the custom code's business.
+
+**Own types** implement one typed sub-interface of the `CustomValue` marker — the interface choice declares the native type: `StringValue`, `IntValue`, `FloatValue`, `BoolValue`, `DateTimeValue`, `IntervalValue`.
+
+```php
+use JakubBoucek\Hydrator\IntValue;
+
+final class Money implements IntValue
+{
+    private function __construct(
+        public readonly int $cents,
+    ) {}
+
+    public static function fromNative(int $value): static   // exact type, no unions
+    {
+        return new static($value);
+    }
+
+    public function toNative(): ?int
+    {
+        return $this->cents;
+    }
+}
+```
+
+**Foreign classes** — types that exist independently and cannot implement the interface (ramsey/uuid and friends) — get a registered `TypeAdapter`:
+
+```php
+use JakubBoucek\Hydrator\NativeType;
+use JakubBoucek\Hydrator\TypeAdapter;
+
+final class UuidAdapter implements TypeAdapter
+{
+    public static function provides(): array
+    {
+        return [
+            UuidInterface::class => NativeType::String,
+            LazyUuidFromString::class => NativeType::String,
+        ];
+    }
+
+    public function import(mixed $value, string $targetClass): object
+    {
+        return Uuid::fromString((string) $value);
+    }
+
+    public function export(object $value): string
+    {
+        return (string) $value;
+    }
+}
+
+$factory = new HydratorFactory(
+    format: NetteDatabase::class,
+    adapters: [UuidAdapter::class, new GeoAdapter($resolver)],
+);
+```
+
+Rules of the mechanism:
+
+- **Registration order is binding** — the first adapter declaring a class wins. Class-strings load lazily: an adapter is instantiated only when a processed entity actually uses a declared class. Instances suit adapters with dependencies and win over a class-string registration of the same class.
+- **`provides()` is a pure function of the class**: exact-match string keys that may reference classes absent from the application (optional dependencies) — matching never triggers autoload and the capability map is plain, cacheable data by contract.
+- **Adapters cannot shadow natively handled classes** (`DateTimeImmutable`, `DateInterval`, `BackedEnum`, `Struct` and `CustomValue` implementations) — that fails loudly at metadata build.
+- **Null policy is deliberately asymmetric**: `fromNative()`/`import()` never receive null — a `NULL` field is decided by the property's nullability — while `toNative()`/`export()` may return null for inner nullness; the field is then stored as `NULL` and the value collapses to a plain null on the next hydration.
 
 ## Tests
 

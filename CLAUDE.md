@@ -30,10 +30,15 @@ docker compose run --rm -e DATABASE_DSN='mysql:host=mysqldb;dbname=hydrator_test
 
 (User/password default to root/devstack; override with `DATABASE_USER`/
 `DATABASE_PASSWORD`.) In CI they run as the dedicated "Integration tests"
-job with a MariaDB 10.6 service container. Each test file owns its table —
-Tester runs files in parallel. MariaDB 10.6 is the lowest devstack image;
-the JSON column (LONGTEXT alias + json_valid check) is supported
-everywhere since 10.2.7.
+job with a MariaDB 10.6 service container. Each test file owns a whole
+database (`hydrator_test_<name>` via `Mariadb::freshDatabase()`) — Tester
+runs files in parallel and Nette Structure enumerates every table of a
+database on load, so a shared database races concurrent DROP/CREATE
+(that was the cause of the early transient failures). Prefer
+`docker compose up -d --wait mysqldb` — the service has a healthcheck; a
+freshly started server otherwise flakes. MariaDB 10.6 is the lowest
+devstack image; the JSON column (LONGTEXT alias + json_valid check) is
+supported everywhere since 10.2.7.
 
 GitHub Actions run natively (no Docker needed there). CI marks lowest-deps
 jobs `continue-on-error` — the run may look green while they fail, so
@@ -61,6 +66,11 @@ always check per-job conclusions (`gh run view <id> --json jobs`).
   class-string (the engine holds the instance internally); customization by
   subclassing. `NetteDatabase extends Mysql` (pass-through overrides),
   family marker interface `DatabaseFormat` for attribute scoping.
+- **Custom types** (`CustomValue` marker + typed sub-interfaces
+  StringValue/IntValue/FloatValue/BoolValue/DateTimeValue/IntervalValue,
+  `TypeAdapter` + `NativeType`) — a domain value object over a single
+  column, converted through an intermediate native type that passes the
+  format codecs first (custom code is format-blind, formats untouched).
 - **Struct** (`src/Struct.php` + `BaseStruct`, `DynamicStruct`,
   `TagListStruct`, `NoteListStruct`) — an autonomous structure in a single
   JSON column; the hydrator only passes serialized values, the format
@@ -166,6 +176,23 @@ always check per-job conclusions (`gh run view <id> --json jobs`).
   traits (unknown keys dropped, nulls filtered) are documented; the
   lossless variant is DynamicStruct. A property typed with a
   non-instantiable Struct (interface/abstract) → MetadataException.
+- **Custom types** (2026-08-01): one concept, two attachment points —
+  typed sub-interfaces of `CustomValue` for own classes (the interface
+  choice declares the intermediate native type; per-type interfaces
+  because PHP parameter contravariance forbids narrowing an inherited
+  fromNative(); the marker carries the covariantly narrowable
+  toNative()), `TypeAdapter` for foreign classes (ramsey/uuid style).
+  Values pass the format codec of the intermediate type first. Adapter
+  registration: class-strings (lazy) or instances (dependencies;
+  configured instance wins, two different instances of one class =
+  error), order binding with first-win; `provides()` is a static pure
+  function with exact-match keys that may reference absent classes — no
+  autoload on matching, capability map cacheable by contract (future
+  `adapterLoader` DI hook is an additive extension). Adapters cannot
+  shadow natively handled classes (loud MetadataException). Null policy
+  deliberately asymmetric: fromNative()/import() never receive null,
+  toNative()/export() may return it (collapses to plain null on the next
+  hydration).
 - **Strictness**: missing field, null into non-nullable, wrong value type →
   `HydrationException` with `Class::$property` + field context. Value
   codecs in formats throw `ValueException`; the engine wraps it with
@@ -187,8 +214,11 @@ always check per-job conclusions (`gh run view <id> --json jobs`).
 - **0.3** (structs implemented 2026-07-30) — `Struct` interface +
   `BaseStruct`/`DynamicStruct`/`TagListStruct`/`NoteListStruct`,
   representation per format (DB string vs. Json nested array), MariaDB
-  integration proof. Still open from the 0.3 scope: a general extension
-  point for custom value types (the DatabaseValue idea).
+  integration proof.
+- **0.4** (implemented 2026-08-01) — custom value types (see the decision
+  above): CustomValue sub-interfaces, TypeAdapter registry, intermediate
+  native types incl. DateTime/Interval. Completes the original roadmap
+  (the DatabaseValue idea).
 - Later: composite keys, more `Type\*` attributes as needed.
 
 First real consumer: project Lexion (infosoud-checker; PHP 8.5,
