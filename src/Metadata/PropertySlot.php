@@ -28,6 +28,7 @@ final readonly class PropertySlot
         public bool $readable,
         public ?Fraction $fraction,
         public ?DateFormat $dateFormat,
+        public ?CustomSpec $custom,
         public ReflectionProperty $reflection,
     ) {
     }

@@ -23,6 +23,7 @@ use JakubBoucek\Hydrator\Exception\MetadataException;
 use JakubBoucek\Hydrator\Exception\ValueException;
 use JakubBoucek\Hydrator\Format\Format;
 use JakubBoucek\Hydrator\Format\FormatScope;
+use JakubBoucek\Hydrator\Metadata\CustomSpec;
 use JakubBoucek\Hydrator\Metadata\PropertySlot;
 use JakubBoucek\Hydrator\Metadata\ValueKind;
 use PropertyHookType;
@@ -57,6 +58,20 @@ class Hydrator
 
     private readonly DateTimeZone $timeZone;
 
+    /** @var list<class-string<TypeAdapter>|TypeAdapter> */
+    private readonly array $adapters;
+
+    /**
+     * Adapter capability map, built lazily on the first non-native class
+     * (a future cache layer can replace the build with a plain data load).
+     *
+     * @var array<string, array{ValueKind, class-string<TypeAdapter>}>
+     */
+    private array $adapterMap;
+
+    /** @var array<class-string<TypeAdapter>, TypeAdapter> */
+    private array $adapterInstances = [];
+
     /** @var array<string, PropertySlot> */
     private array $slots;
 
@@ -65,11 +80,15 @@ class Hydrator
      * @param class-string<Format> $format
      * @param DateTimeZone|null $timeZone Application time zone injected into
      *   every hydrated date-time; defaults to the PHP default time zone.
+     * @param list<class-string<TypeAdapter>|TypeAdapter> $adapters Type
+     *   adapters for foreign classes; order is binding — the first adapter
+     *   declaring a class wins. Class-strings load lazily.
      */
     public function __construct(
         private readonly string $entityClass,
         string $format,
         ?DateTimeZone $timeZone = null,
+        array $adapters = [],
     ) {
         if (!class_exists($entityClass)) {
             throw new MetadataException("Entity class '{$entityClass}' does not exist.");
@@ -85,6 +104,7 @@ class Hydrator
 
         $this->format = new $format();
         $this->timeZone = $timeZone ?? new DateTimeZone(date_default_timezone_get());
+        $this->adapters = $adapters;
     }
 
     /**
@@ -171,6 +191,7 @@ class Hydrator
                     ValueKind::Interval => $this->format->importInterval($value),
                     ValueKind::Enum => $this->importEnum($value, $slot),
                     ValueKind::Struct => $this->importStruct($value, $slot),
+                    ValueKind::Custom => $this->importCustom($value, $slot),
                     ValueKind::Mixed => $value,
                 };
             } catch (ValueException | ValueError | JsonException $e) {
@@ -257,6 +278,7 @@ class Hydrator
                     ValueKind::Interval => $this->format->exportInterval($this->expectInterval($value), $slot->fraction),
                     ValueKind::Enum => $this->expectEnum($value)->value,
                     ValueKind::Struct => $this->format->exportStruct($this->expectStruct($value)),
+                    ValueKind::Custom => $this->exportCustom($value, $slot),
                     default => $value,
                 };
             } catch (ValueException | JsonException $e) {
@@ -320,6 +342,188 @@ class Hydrator
         $structClass = $slot->type;
 
         return $this->format->importStruct($value, $structClass);
+    }
+
+    private function importCustom(mixed $value, PropertySlot $slot): object
+    {
+        /** @var CustomSpec $spec */
+        $spec = $slot->custom;
+
+        // first level: the format codec of the intermediate native type,
+        // with all its strictness — custom conversions stay format-blind
+        $native = match ($spec->nativeKind) {
+            ValueKind::Int => (int) $value, // @phpstan-ignore cast.int
+            ValueKind::Float => (float) $value, // @phpstan-ignore cast.double
+            ValueKind::Bool => $this->format->importBool($value),
+            default => $this->importString($value),
+        };
+
+        /** @var class-string $targetClass */
+        $targetClass = $slot->type;
+
+        if ($spec->adapterClass === null) {
+            /** @var class-string<StringValue> $targetClass */
+            $object = $targetClass::fromNative($native); // @phpstan-ignore argument.type
+        } else {
+            $object = $this->adapter($spec->adapterClass)->import($native, $targetClass);
+        }
+
+        if (!$object instanceof $slot->type) {
+            $source = $spec->adapterClass === null
+                ? "{$slot->type}::fromNative()"
+                : "Adapter '{$spec->adapterClass}'";
+            throw new ValueException(
+                "{$source} returned " . get_debug_type($object) . " instead of '{$slot->type}'.",
+            );
+        }
+
+        return $object;
+    }
+
+    private function exportCustom(mixed $value, PropertySlot $slot): mixed
+    {
+        if (!$value instanceof $slot->type) {
+            throw new ValueException("Expected '{$slot->type}', got " . get_debug_type($value) . '.');
+        }
+
+        /** @var CustomSpec $spec */
+        $spec = $slot->custom;
+
+        if ($spec->adapterClass === null) {
+            if (!$value instanceof CustomValue) {
+                throw new ValueException("Expected CustomValue, got " . get_debug_type($value) . '.');
+            }
+            $native = $value->toNative();
+        } else {
+            $native = $this->adapter($spec->adapterClass)->export($value);
+        }
+
+        // inner nullness: the value renders as a NULL field and collapses
+        // to a plain null on the next hydration (documented policy)
+        if ($native === null) {
+            return null;
+        }
+
+        $source = $spec->adapterClass === null
+            ? "{$slot->type}::toNative()"
+            : "Adapter '{$spec->adapterClass}'";
+
+        return match ($spec->nativeKind) {
+            ValueKind::Int => is_int($native)
+                ? $native
+                : throw new ValueException("{$source} must return int, got " . get_debug_type($native) . '.'),
+            ValueKind::Float => is_float($native)
+                ? $native
+                : throw new ValueException("{$source} must return float, got " . get_debug_type($native) . '.'),
+            ValueKind::Bool => is_bool($native)
+                ? $this->format->exportBool($native)
+                : throw new ValueException("{$source} must return bool, got " . get_debug_type($native) . '.'),
+            default => is_string($native)
+                ? $native
+                : throw new ValueException("{$source} must return string, got " . get_debug_type($native) . '.'),
+        };
+    }
+
+    private function resolveCustomSpec(string $typeName, string $propertyName): CustomSpec
+    {
+        if (is_subclass_of($typeName, CustomValue::class)) {
+            $matched = [];
+            $interfaces = [
+                StringValue::class => ValueKind::String,
+                IntValue::class => ValueKind::Int,
+                FloatValue::class => ValueKind::Float,
+                BoolValue::class => ValueKind::Bool,
+            ];
+            foreach ($interfaces as $interface => $nativeKind) {
+                if (is_subclass_of($typeName, $interface)) {
+                    $matched[$interface] = $nativeKind;
+                }
+            }
+
+            if (count($matched) !== 1) {
+                throw new MetadataException(
+                    $matched === []
+                        ? "Class '{$typeName}' implements CustomValue directly — implement exactly one"
+                            . ' typed interface (StringValue, IntValue, FloatValue, BoolValue)'
+                            . " (property {$this->entityClass}::\${$propertyName})."
+                        : "Class '{$typeName}' implements multiple typed CustomValue interfaces ("
+                            . implode(', ', array_keys($matched))
+                            . "), which is ambiguous (property {$this->entityClass}::\${$propertyName}).",
+                );
+            }
+
+            return new CustomSpec(reset($matched), null);
+        }
+
+        [$nativeKind, $adapterClass] = $this->adapterMap()[$typeName];
+
+        return new CustomSpec($nativeKind, $adapterClass);
+    }
+
+    /**
+     * Builds the adapter capability map: pure data (a future cache layer can
+     * load it instead of calling the static provides() methods). First-win:
+     * the earliest registered adapter declaring a class keeps it.
+     *
+     * @return array<string, array{ValueKind, class-string<TypeAdapter>}>
+     */
+    private function adapterMap(): array
+    {
+        if (isset($this->adapterMap)) {
+            return $this->adapterMap;
+        }
+
+        $map = [];
+        $seen = [];
+
+        foreach ($this->adapters as $adapter) {
+            if ($adapter instanceof TypeAdapter) {
+                $class = $adapter::class;
+                if (isset($this->adapterInstances[$class]) && $this->adapterInstances[$class] !== $adapter) {
+                    throw new MetadataException(
+                        "Two different instances of adapter '{$class}' are registered, which is ambiguous.",
+                    );
+                }
+                // a registered instance is the configured one — it wins over
+                // a class-string registration of the same class
+                $this->adapterInstances[$class] = $adapter;
+            } else {
+                if (!is_a($adapter, TypeAdapter::class, true)) {
+                    throw new MetadataException(
+                        'Adapter must be a class-string of ' . TypeAdapter::class
+                        . " or its instance, got '{$adapter}'.",
+                    );
+                }
+                $class = $adapter;
+            }
+
+            if (isset($seen[$class])) {
+                continue;
+            }
+            $seen[$class] = true;
+
+            foreach ($class::provides() as $target => $nativeType) {
+                $map[$target] ??= [
+                    match ($nativeType) {
+                        NativeType::String => ValueKind::String,
+                        NativeType::Int => ValueKind::Int,
+                        NativeType::Float => ValueKind::Float,
+                        NativeType::Bool => ValueKind::Bool,
+                    },
+                    $class,
+                ];
+            }
+        }
+
+        return $this->adapterMap = $map;
+    }
+
+    /**
+     * @param class-string<TypeAdapter> $class
+     */
+    private function adapter(string $class): TypeAdapter
+    {
+        return $this->adapterInstances[$class] ??= new $class();
     }
 
     private function importString(mixed $value): string
@@ -445,6 +649,30 @@ class Hydrator
                     . " a concrete Struct implementation, '{$structClass}' is not instantiable.",
                 );
             }
+            if (is_subclass_of($structClass, CustomValue::class)) {
+                throw new MetadataException(
+                    "Class '{$structClass}' implements both Struct and CustomValue,"
+                    . " which is ambiguous (property {$this->entityClass}::\${$name}).",
+                );
+            }
+        }
+
+        $custom = $kind === ValueKind::Custom && $type !== null
+            ? $this->resolveCustomSpec($type->getName(), $name)
+            : null;
+
+        // shadowing guard: an adapter must not claim a natively handled class
+        if ($custom === null
+            && $type !== null
+            && !$type->isBuiltin()
+            && $this->adapters !== []
+            && isset($this->adapterMap()[$type->getName()])
+        ) {
+            throw new MetadataException(
+                "Adapter '{$this->adapterMap()[$type->getName()][1]}' claims class"
+                . " '{$type->getName()}', which the hydrator handles natively"
+                . " (property {$this->entityClass}::\${$name}).",
+            );
         }
 
         // Writable: no restricted setter, and a virtual property only with a set hook
@@ -512,6 +740,7 @@ class Hydrator
             readable: $readable,
             fraction: $fraction,
             dateFormat: $dateFormat,
+            custom: $custom,
             reflection: $property,
         );
     }
@@ -544,10 +773,12 @@ class Hydrator
             is_a($type->getName(), DateInterval::class, true) => ValueKind::Interval,
             is_subclass_of($type->getName(), BackedEnum::class) => ValueKind::Enum,
             is_a($type->getName(), Struct::class, true) => ValueKind::Struct,
+            is_subclass_of($type->getName(), CustomValue::class) => ValueKind::Custom,
             is_a($type->getName(), DateTimeInterface::class, true) => throw new MetadataException(
                 "Mutable date-time type '{$type->getName()}' is not supported for"
                 . " {$this->entityClass}::\${$name}, use DateTimeImmutable.",
             ),
+            isset($this->adapterMap()[$type->getName()]) => ValueKind::Custom,
             default => throw new MetadataException(
                 "Unsupported property type '{$type->getName()}' for {$this->entityClass}::\${$name}.",
             ),

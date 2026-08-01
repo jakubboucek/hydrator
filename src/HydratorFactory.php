@@ -22,10 +22,15 @@ class HydratorFactory
      *   explicit format is requested.
      * @param DateTimeZone|null $timeZone Application time zone injected into
      *   every hydrated date-time; defaults to the PHP default time zone.
+     * @param list<class-string<TypeAdapter>|TypeAdapter> $adapters Type
+     *   adapters for foreign classes; order is binding — the first adapter
+     *   declaring a class wins. Class-strings load lazily, instances suit
+     *   adapters with dependencies.
      */
     public function __construct(
         private readonly string $format,
         private readonly ?DateTimeZone $timeZone = null,
+        private readonly array $adapters = [],
     ) {
     }
 
@@ -44,6 +49,6 @@ class HydratorFactory
 
         /** @var Hydrator<T> */
         return $this->hydrators[$entityClass . '|' . $format]
-            ??= new Hydrator($entityClass, $format, $this->timeZone);
+            ??= new Hydrator($entityClass, $format, $this->timeZone, $this->adapters);
     }
 }

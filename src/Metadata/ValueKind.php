@@ -22,5 +22,6 @@ enum ValueKind
     case Time;
     case Interval;
     case Struct;
+    case Custom;
     case Mixed;
 }
