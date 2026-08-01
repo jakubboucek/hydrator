@@ -355,6 +355,8 @@ class Hydrator
             ValueKind::Int => (int) $value, // @phpstan-ignore cast.int
             ValueKind::Float => (float) $value, // @phpstan-ignore cast.double
             ValueKind::Bool => $this->format->importBool($value),
+            ValueKind::DateTime => $this->format->importDateTime($value, $this->timeZone),
+            ValueKind::Interval => $this->format->importInterval($value),
             default => $this->importString($value),
         };
 
@@ -418,6 +420,16 @@ class Hydrator
             ValueKind::Bool => is_bool($native)
                 ? $this->format->exportBool($native)
                 : throw new ValueException("{$source} must return bool, got " . get_debug_type($native) . '.'),
+            ValueKind::DateTime => $native instanceof DateTimeImmutable
+                ? $this->format->exportDateTime($native, $this->timeZone)
+                : throw new ValueException(
+                    "{$source} must return DateTimeImmutable, got " . get_debug_type($native) . '.',
+                ),
+            ValueKind::Interval => $native instanceof DateInterval
+                ? $this->format->exportInterval($native)
+                : throw new ValueException(
+                    "{$source} must return DateInterval, got " . get_debug_type($native) . '.',
+                ),
             default => is_string($native)
                 ? $native
                 : throw new ValueException("{$source} must return string, got " . get_debug_type($native) . '.'),
@@ -433,6 +445,8 @@ class Hydrator
                 IntValue::class => ValueKind::Int,
                 FloatValue::class => ValueKind::Float,
                 BoolValue::class => ValueKind::Bool,
+                DateTimeValue::class => ValueKind::DateTime,
+                IntervalValue::class => ValueKind::Interval,
             ];
             foreach ($interfaces as $interface => $nativeKind) {
                 if (is_subclass_of($typeName, $interface)) {
@@ -444,7 +458,8 @@ class Hydrator
                 throw new MetadataException(
                     $matched === []
                         ? "Class '{$typeName}' implements CustomValue directly — implement exactly one"
-                            . ' typed interface (StringValue, IntValue, FloatValue, BoolValue)'
+                            . ' typed interface (StringValue, IntValue, FloatValue, BoolValue,'
+                            . ' DateTimeValue, IntervalValue)'
                             . " (property {$this->entityClass}::\${$propertyName})."
                         : "Class '{$typeName}' implements multiple typed CustomValue interfaces ("
                             . implode(', ', array_keys($matched))
@@ -509,6 +524,8 @@ class Hydrator
                         NativeType::Int => ValueKind::Int,
                         NativeType::Float => ValueKind::Float,
                         NativeType::Bool => ValueKind::Bool,
+                        NativeType::DateTime => ValueKind::DateTime,
+                        NativeType::Interval => ValueKind::Interval,
                     },
                     $class,
                 ];

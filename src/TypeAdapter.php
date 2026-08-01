@@ -45,5 +45,5 @@ interface TypeAdapter
     /**
      * Returns the declared native type, or null for inner nullness.
      */
-    public function export(object $value): int|float|string|bool|null;
+    public function export(object $value): int|float|string|bool|\DateTimeImmutable|\DateInterval|null;
 }

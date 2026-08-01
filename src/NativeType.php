@@ -17,4 +17,6 @@ enum NativeType
     case Int;
     case Float;
     case Bool;
+    case DateTime;
+    case Interval;
 }

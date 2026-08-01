@@ -23,5 +23,5 @@ namespace JakubBoucek\Hydrator;
  */
 interface CustomValue
 {
-    public function toNative(): int|float|string|bool|null;
+    public function toNative(): int|float|string|bool|\DateTimeImmutable|\DateInterval|null;
 }
