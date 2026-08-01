@@ -51,6 +51,11 @@ always check per-job conclusions (`gh run view <id> --json jobs`).
   the cost of more commits. Stage selectively when needed.
 - **Push sparingly**: not after every commit — push when the iteration is
   done or when CI verification is needed.
+- **Releases**: annotated tags with a real description, created only on
+  the user's explicit instruction (as is merging branches); Packagist is
+  handled manually by the user. Design changes are proposed and approved
+  before implementation — the user drives decisions, iterations are
+  design-dialogue first, code second.
 
 ## Architecture and terminology
 
@@ -208,7 +213,11 @@ namespace to coexist); families live in `Converter\`, `Struct\`,
   shadow natively handled classes (loud MetadataException). Null policy
   deliberately asymmetric: fromNative()/import() never receive null,
   toNative()/export() may return it (collapses to plain null on the next
-  hydration).
+  hydration). Rejected on the way (do not re-propose): a single
+  BackedEnum-style interface with a `$value { get; }` property — mixes
+  the de/hydration contract into the object's own API and excludes
+  foreign classes; a single fromNative(union) interface — PHP parameter
+  contravariance forbids implementations narrowing it.
 - **Strictness**: missing field, null into non-nullable, wrong value type →
   `HydrationException` with `Class::$property` + field context. Value
   codecs in formats throw `ValueException`; the engine wraps it with
@@ -234,13 +243,45 @@ namespace to coexist); families live in `Converter\`, `Struct\`,
 - **0.4** (implemented 2026-08-01) — custom value types (see the decision
   above): CustomValue sub-interfaces, TypeAdapter registry, intermediate
   native types incl. DateTime/Interval. Completes the original roadmap
-  (the DatabaseValue idea).
-- Later: composite keys, more `Type\*` attributes as needed.
+  (the DatabaseValue idea). Namespace cleanup in the same release.
+- **0.4.1** (2026-08-01) — per-call input switches `allowPartial` +
+  `rejectUnknown` (see the partial-update decision).
+
+## Future candidates (analyzed, not scheduled)
+
+- **Metadata/slot cache** (analysis 2026-08-01, preparatory refactor
+  deliberately deferred until the cache layer itself): `PropertySlot` is
+  pure cacheable data EXCEPT `ReflectionProperty`, which runtime needs
+  only for `isInitialized()` in toData. Reflection-free alternatives are
+  disproved by probes — `get_object_vars()` invokes get hooks in PHP 8.4
+  (crashes on an uninitialized hooked backing, computes virtuals), and
+  `isset()` conflates initialized-null with uninitialized. Solution:
+  lazy reflection re-attach (`new ReflectionProperty(class, name)` on
+  slot load; `__serialize`/`__unserialize` skipping the reflection). No
+  external API change needed — a future metadata-cache loader is an
+  additive factory parameter. Cache key must be (entity class, format
+  class, adapter-registration fingerprint) — slots carry format-resolved
+  attributes and `CustomSpec::$adapterClass`. Invalidation (entity file
+  mtime…) is the cache layer's concern. The adapter capability map is
+  already cacheable by the `provides()` contract.
+- **`adapterLoader` DI hook** — lazy adapter instantiation through a
+  container callback; additive factory parameter (see the custom types
+  decision).
+- **DB-structure ↔ entity mapping validator** (idea 2026-08-01) — an
+  integration-test-level tool comparing a live database schema with
+  entity metadata; deliberately not a runtime feature.
+- **`fromDataSet` sequential-keys override** — when the source has
+  `getPrimary()` (Selection), auto-detection cannot be suppressed;
+  a possible additive `keyBy: false` sentinel.
+- Composite keys, more `Type\*` attributes as needed.
 
 First real consumer: project Lexion (infosoud-checker; PHP 8.5,
 nette/database) — see its `docs/roadmap.md`, section "Typové entity a
 de/hydratace". Performance target: parity with the POC harness
 (`bin/poc-hydration.php` in branch `poc-hydration` there, ~490k rows/s).
+Local baseline (2026-07-29, dev container, full-type entity):
+NetteDatabase ~322k rows/s hydrate, ~492k rows/s extract — an ad-hoc
+bench script lives outside the repo (tests/tmp is gitignored).
 
 ## Legacy edge cases (documented by tests, 2026-07-30)
 
