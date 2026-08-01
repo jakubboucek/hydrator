@@ -2,9 +2,10 @@
 
 declare(strict_types=1);
 
-namespace JakubBoucek\Hydrator;
+namespace JakubBoucek\Hydrator\Adapter;
 
 use JakubBoucek\Hydrator\Exception\ValueException;
+use JakubBoucek\Hydrator\Value\NativeType;
 
 /**
  * Maps foreign classes (types that exist independently of the hydrator,

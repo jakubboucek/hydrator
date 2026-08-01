@@ -54,6 +54,13 @@ always check per-job conclusions (`gh run view <id> --json jobs`).
 
 ## Architecture and terminology
 
+Namespace layout (cleanup 2026-08-01): the root keeps the facade
+(`Hydrator`, `HydratorFactory`) and the two most-imported contracts
+(`Entity`, `Struct` — PHP allows the `Struct` class and the `Struct\`
+namespace to coexist); families live in `Converter\`, `Struct\`,
+`Value\` and `Adapter\`, next to the existing `Attribute\`, `Format\`,
+`Exception\` and `Metadata\`.
+
 - **Entity** — a plain object with typed public properties implementing the
   empty `Entity` marker interface (decision 2026-07-29: the marker exists to
   reject foreign objects early and improve IDE hinting; no methods, no other

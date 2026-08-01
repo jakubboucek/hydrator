@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace JakubBoucek\Hydrator;
+namespace JakubBoucek\Hydrator\Value;
 
 /**
  * Family marker of custom value types made for the hydrator: a domain value

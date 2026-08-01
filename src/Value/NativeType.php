@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace JakubBoucek\Hydrator;
+namespace JakubBoucek\Hydrator\Value;
 
 /**
  * Whitelist of intermediate native types a custom type maps to. The value

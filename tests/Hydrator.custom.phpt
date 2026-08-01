@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-use JakubBoucek\Hydrator\BaseStruct;
-use JakubBoucek\Hydrator\CustomValue;
+use JakubBoucek\Hydrator\Struct\BaseStruct;
+use JakubBoucek\Hydrator\Value\CustomValue;
 use JakubBoucek\Hydrator\Entity;
 use JakubBoucek\Hydrator\Exception\ExtractionException;
 use JakubBoucek\Hydrator\Exception\HydrationException;
 use JakubBoucek\Hydrator\Exception\MetadataException;
 use JakubBoucek\Hydrator\Format\Mysql;
 use JakubBoucek\Hydrator\Hydrator;
-use JakubBoucek\Hydrator\IntValue;
-use JakubBoucek\Hydrator\NativeType;
+use JakubBoucek\Hydrator\Value\IntValue;
+use JakubBoucek\Hydrator\Value\NativeType;
 use JakubBoucek\Hydrator\Tests\Fixtures\MoneyValue;
 use JakubBoucek\Hydrator\Tests\Fixtures\ThirdParty\Ulid;
 use JakubBoucek\Hydrator\Tests\Fixtures\UlidAdapter;
 use JakubBoucek\Hydrator\Tests\Fixtures\Wallet;
-use JakubBoucek\Hydrator\TypeAdapter;
+use JakubBoucek\Hydrator\Adapter\TypeAdapter;
 use Tester\Assert;
 
 require __DIR__ . '/bootstrap.php';

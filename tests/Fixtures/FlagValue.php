@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace JakubBoucek\Hydrator\Tests\Fixtures;
 
-use JakubBoucek\Hydrator\BoolValue;
+use JakubBoucek\Hydrator\Value\BoolValue;
 
 /** Custom type over a bool intermediate (TINYINT(1) column). */
 class FlagValue implements BoolValue

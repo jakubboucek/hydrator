@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace JakubBoucek\Hydrator\Tests\Fixtures;
 
 use DateInterval;
-use JakubBoucek\Hydrator\IntervalValue;
+use JakubBoucek\Hydrator\Value\IntervalValue;
 
 /** Own custom type over a TIME column (full domain via DateInterval). */
 class DurationValue implements IntervalValue

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace JakubBoucek\Hydrator;
+namespace JakubBoucek\Hydrator\Converter;
 
 /**
  * Converts camelCase (or PascalCase) property names to snake_case field names.

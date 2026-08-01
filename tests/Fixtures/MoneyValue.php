@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace JakubBoucek\Hydrator\Tests\Fixtures;
 
-use JakubBoucek\Hydrator\IntValue;
+use JakubBoucek\Hydrator\Value\IntValue;
 
 /** Own custom type: money as minor units in an INT column. */
 class MoneyValue implements IntValue

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace JakubBoucek\Hydrator;
+namespace JakubBoucek\Hydrator\Value;
 
 use JakubBoucek\Hydrator\Exception\ValueException;
 

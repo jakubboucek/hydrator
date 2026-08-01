@@ -228,9 +228,9 @@ public DateTimeImmutable $mixedUse;
 A *struct* is an autonomous structure stored in a single JSON column: for the database the column stays an ordinary string, but the entity works with it as a typed object. The hydrator never looks inside — it hands the serialized value to the struct and asks for it back; parsing, rendering and emptiness are fully the struct's domain. The `Struct` interface carries two representations: `fromJson`/`toJson` (databases) and `fromArray`/`toArray` (plain data, used by the Json format).
 
 ```php
-use JakubBoucek\Hydrator\BaseStruct;
+use JakubBoucek\Hydrator\Struct\BaseStruct;
 use JakubBoucek\Hydrator\Entity;
-use JakubBoucek\Hydrator\NoteListStruct;
+use JakubBoucek\Hydrator\Struct\NoteListStruct;
 
 class AddressStruct extends BaseStruct
 {
@@ -267,7 +267,7 @@ A custom type maps a domain value object to a single column through an *intermed
 **Own types** implement one typed sub-interface of the `CustomValue` marker — the interface choice declares the native type: `StringValue`, `IntValue`, `FloatValue`, `BoolValue`, `DateTimeValue`, `IntervalValue`.
 
 ```php
-use JakubBoucek\Hydrator\IntValue;
+use JakubBoucek\Hydrator\Value\IntValue;
 
 final class Money implements IntValue
 {
@@ -290,8 +290,8 @@ final class Money implements IntValue
 **Foreign classes** — types that exist independently and cannot implement the interface (ramsey/uuid and friends) — get a registered `TypeAdapter`:
 
 ```php
-use JakubBoucek\Hydrator\NativeType;
-use JakubBoucek\Hydrator\TypeAdapter;
+use JakubBoucek\Hydrator\Value\NativeType;
+use JakubBoucek\Hydrator\Adapter\TypeAdapter;
 
 final class UuidAdapter implements TypeAdapter
 {

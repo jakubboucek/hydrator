@@ -2,9 +2,10 @@
 
 declare(strict_types=1);
 
-namespace JakubBoucek\Hydrator;
+namespace JakubBoucek\Hydrator\Struct;
 
 use JakubBoucek\Hydrator\Exception\ValueException;
+use JakubBoucek\Hydrator\Struct;
 use JsonException;
 
 /**

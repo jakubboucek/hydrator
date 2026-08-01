@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace JakubBoucek\Hydrator\Tests\Fixtures;
 
-use JakubBoucek\Hydrator\NativeType;
+use JakubBoucek\Hydrator\Value\NativeType;
 use JakubBoucek\Hydrator\Tests\Fixtures\ThirdParty\PlainDate;
-use JakubBoucek\Hydrator\TypeAdapter;
+use JakubBoucek\Hydrator\Adapter\TypeAdapter;
 
 class PlainDateAdapter implements TypeAdapter
 {

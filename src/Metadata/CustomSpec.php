@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace JakubBoucek\Hydrator\Metadata;
 
-use JakubBoucek\Hydrator\TypeAdapter;
+use JakubBoucek\Hydrator\Adapter\TypeAdapter;
 
 /**
  * Resolved conversion plan of a custom-typed property: the intermediate

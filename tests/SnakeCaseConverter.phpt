@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use JakubBoucek\Hydrator\SnakeCaseConverter;
+use JakubBoucek\Hydrator\Converter\SnakeCaseConverter;
 use Tester\Assert;
 
 require __DIR__ . '/bootstrap.php';

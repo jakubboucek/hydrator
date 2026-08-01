@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace JakubBoucek\Hydrator;
 
 use DateTimeZone;
+use JakubBoucek\Hydrator\Adapter\TypeAdapter;
 use JakubBoucek\Hydrator\Format\Format;
 
 /**

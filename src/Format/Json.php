@@ -9,8 +9,8 @@ use DateTimeInterface;
 use DateTimeZone;
 use JakubBoucek\Hydrator\Attribute\Fraction;
 use JakubBoucek\Hydrator\Exception\ValueException;
-use JakubBoucek\Hydrator\IdentityConverter;
-use JakubBoucek\Hydrator\NameConverter;
+use JakubBoucek\Hydrator\Converter\IdentityConverter;
+use JakubBoucek\Hydrator\Converter\NameConverter;
 use JakubBoucek\Hydrator\Struct;
 
 /**

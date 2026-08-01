@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use JakubBoucek\Hydrator\NoteListStruct;
-use JakubBoucek\Hydrator\TagListStruct;
+use JakubBoucek\Hydrator\Struct\NoteListStruct;
+use JakubBoucek\Hydrator\Struct\TagListStruct;
 use Tester\Assert;
 
 require __DIR__ . '/bootstrap.php';

@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace JakubBoucek\Hydrator\Tests\Fixtures;
 
-use JakubBoucek\Hydrator\DynamicStruct;
+use JakubBoucek\Hydrator\Struct\DynamicStruct;
 use JakubBoucek\Hydrator\Entity;
-use JakubBoucek\Hydrator\NoteListStruct;
-use JakubBoucek\Hydrator\TagListStruct;
+use JakubBoucek\Hydrator\Struct\NoteListStruct;
+use JakubBoucek\Hydrator\Struct\TagListStruct;
 
 /** Integration entity: every bundled Struct flavor over JSON columns. */
 class Parcel implements Entity

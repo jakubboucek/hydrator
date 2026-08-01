@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use JakubBoucek\Hydrator\BaseStruct;
-use JakubBoucek\Hydrator\DynamicStruct;
+use JakubBoucek\Hydrator\Struct\BaseStruct;
+use JakubBoucek\Hydrator\Struct\DynamicStruct;
 use JakubBoucek\Hydrator\Exception\ValueException;
 use Tester\Assert;
 

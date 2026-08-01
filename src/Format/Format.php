@@ -11,8 +11,8 @@ use DateTimeZone;
 use Exception;
 use JakubBoucek\Hydrator\Attribute\Fraction;
 use JakubBoucek\Hydrator\Exception\ValueException;
-use JakubBoucek\Hydrator\NameConverter;
-use JakubBoucek\Hydrator\SnakeCaseConverter;
+use JakubBoucek\Hydrator\Converter\NameConverter;
+use JakubBoucek\Hydrator\Converter\SnakeCaseConverter;
 use JakubBoucek\Hydrator\Struct;
 
 /**

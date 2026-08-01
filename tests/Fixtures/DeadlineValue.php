@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace JakubBoucek\Hydrator\Tests\Fixtures;
 
 use DateTimeImmutable;
-use JakubBoucek\Hydrator\DateTimeValue;
+use JakubBoucek\Hydrator\Value\DateTimeValue;
 
 /** Own custom type over a DATETIME column with domain behavior. */
 class DeadlineValue implements DateTimeValue

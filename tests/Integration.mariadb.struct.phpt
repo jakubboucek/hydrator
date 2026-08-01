@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use JakubBoucek\Hydrator\DynamicStruct;
+use JakubBoucek\Hydrator\Struct\DynamicStruct;
 use JakubBoucek\Hydrator\Format\NetteDatabase;
 use JakubBoucek\Hydrator\Hydrator;
 use JakubBoucek\Hydrator\Tests\Fixtures\Parcel;
