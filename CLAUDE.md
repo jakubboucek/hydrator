@@ -135,7 +135,13 @@ class and the `Struct\` namespace to coexist); families live in
   not int/string-kinded (custom/enum objects cannot key an array —
   exotic keys are manual-foreach domain), non-writable (never hydrated)
   or nullable. Runtime: `allowPartial` leaving the key property
-  uninitialized → `HydrationException`. Rejected on the way (do not
+  uninitialized → `HydrationException` — via a zero-cost guard (plain
+  property read in try/catch, PHP try is free until an exception flies;
+  reflection `isInitialized()` runs only on the error path, and only to
+  avoid relabeling an Error thrown by a get hook). Per-row reflection in
+  the hot loop is forbidden territory (2026-08-03; extraction's
+  per-property `isInitialized()` is the accepted, documented exception).
+  Rejected on the way (do not
   re-propose): eager factory method (`fromDataList()` — would make
   eager the default mindset), re-iterable set, dev-mode size warnings,
   a `first()` terminal (would shadow the legit peek pattern and motivate

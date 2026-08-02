@@ -9,6 +9,7 @@ use DateInterval;
 use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
+use Error;
 use Generator;
 use JsonException;
 use JakubBoucek\Hydrator\Adapter\TypeAdapter;
@@ -314,15 +315,22 @@ class Hydrator
             $entity = $this->fromData($data, allowPartial: $allowPartial, rejectUnknown: $rejectUnknown);
 
             if ($keySlot !== null) {
-                if (!$keySlot->reflection->isInitialized($entity)) {
-                    throw new HydrationException(
-                        "Cannot key the stream by {$this->entityClass}::\${$keySlot->name}:"
-                        . " the field '{$keySlot->fieldName}' is missing in a data set item"
-                        . ' (allowPartial left the property uninitialized).',
-                    );
+                try {
+                    /** @var int|string $key */
+                    $key = $entity->{$keySlot->name};
+                } catch (Error $e) {
+                    // reflection is consulted only on the error path — the
+                    // hot path stays a plain property read (try is free)
+                    if (!$keySlot->reflection->isInitialized($entity)) {
+                        throw new HydrationException(
+                            "Cannot key the stream by {$this->entityClass}::\${$keySlot->name}:"
+                            . " the field '{$keySlot->fieldName}' is missing in a data set item"
+                            . ' (allowPartial left the property uninitialized).',
+                            previous: $e,
+                        );
+                    }
+                    throw $e; // a get hook failed on its own — not ours to relabel
                 }
-                /** @var int|string $key */
-                $key = $entity->{$keySlot->name};
             }
 
             yield $key => $entity;
