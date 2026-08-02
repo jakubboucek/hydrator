@@ -248,22 +248,46 @@ class Hydrator
 
     /**
      * Hydrates a stream of data records. Stream-first: returns a lazy,
-     * single-pass generator, nothing is buffered. Keys: explicit `$keyBy`
-     * field, or the format's auto-detection (table primary key on a Nette
-     * Selection), or sequential.
+     * single-pass EntitySet, nothing is buffered and the source is not
+     * touched until the first consumption. Keys: the data set's own keys
+     * pass through transparently (a Nette Selection keys its iteration by
+     * the primary key, a plain list yields sequential keys), or `$keyBy`
+     * re-keys the stream by an entity property — the property name is
+     * resolved to its data field, so the caller never deals with the
+     * format's naming convention.
      *
-     * @param iterable<mixed> $dataSet
-     * @return Generator<int|string, T>
+     * @param iterable<int|string, mixed> $dataSet
+     * @return EntitySet<T>
      */
     public function fromDataSet(
         iterable $dataSet,
         ?string $keyBy = null,
         bool $allowPartial = false,
         bool $rejectUnknown = false,
-    ): Generator {
-        $keyBy ??= $this->format->detectKeyField($dataSet);
+    ): EntitySet {
+        $keyField = null;
+        if ($keyBy !== null) {
+            $slot = $this->slots()[$keyBy] ?? throw new MetadataException(
+                "Unknown keyBy property '{$keyBy}', entity {$this->entityClass} has no such mapped property.",
+            );
+            $keyField = $slot->fieldName;
+        }
 
-        foreach ($dataSet as $data) {
+        return new EntitySet($this->hydrateDataSet($dataSet, $keyBy, $keyField, $allowPartial, $rejectUnknown));
+    }
+
+    /**
+     * @param iterable<int|string, mixed> $dataSet
+     * @return Generator<int|string, T>
+     */
+    private function hydrateDataSet(
+        iterable $dataSet,
+        ?string $keyBy,
+        ?string $keyField,
+        bool $allowPartial,
+        bool $rejectUnknown,
+    ): Generator {
+        foreach ($dataSet as $key => $data) {
             if (!is_iterable($data)) {
                 throw new HydrationException(
                     'Data set item must be an array or Traversable, got ' . get_debug_type($data) . '.',
@@ -272,17 +296,17 @@ class Hydrator
             /** @var iterable<string, mixed> $data */
             $row = is_array($data) ? $data : iterator_to_array($data);
 
-            if ($keyBy === null) {
-                yield $this->fromData($row, allowPartial: $allowPartial, rejectUnknown: $rejectUnknown);
-                continue;
+            if ($keyField !== null) {
+                if (!array_key_exists($keyField, $row)) {
+                    throw new HydrationException(
+                        "Missing field '{$keyField}' of the keyBy property"
+                        . " {$this->entityClass}::\${$keyBy} in a data set item.",
+                    );
+                }
+                /** @var int|string $key */
+                $key = $row[$keyField];
             }
 
-            if (!array_key_exists($keyBy, $row)) {
-                throw new HydrationException("Missing key field '{$keyBy}' in a data set item.");
-            }
-
-            /** @var int|string $key */
-            $key = $row[$keyBy];
             yield $key => $this->fromData($row, allowPartial: $allowPartial, rejectUnknown: $rejectUnknown);
         }
     }
