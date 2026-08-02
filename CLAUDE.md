@@ -126,18 +126,24 @@ class and the `Struct\` namespace to coexist); families live in
   — which exposed the former duck-typed `getPrimary()` autodetection as
   a reimplementation of information the source already carried;
   `Format::detectKeyField()` removed). Explicit `keyBy` is an entity
-  **property** name resolved via slot metadata to the field — the API
-  never speaks field names (the caller would need to know the format's
-  NameConverter); the key value is read from the raw row, so it works
-  for custom-type PKs (Uuid object property, string key). Unknown
-  property → `MetadataException` eagerly at the `fromDataSet()` call;
-  field missing in a row → `HydrationException`. Rejected on the way (do
-  not re-propose): eager factory method (`fromDataList()` — would make
+  **property** name — the API never speaks field names (the caller would
+  need to know the format's NameConverter). The key is read from the
+  **hydrated entity** (simplification 2026-08-03): keys carry the
+  property's type, uniform across drivers (stringified PDO still keys by
+  int). An unusable keyBy property fails eagerly with MetadataException
+  at the `fromDataSet()` call, before the source is touched: unknown,
+  not int/string-kinded (custom/enum objects cannot key an array —
+  exotic keys are manual-foreach domain), non-writable (never hydrated)
+  or nullable. Runtime: `allowPartial` leaving the key property
+  uninitialized → `HydrationException`. Rejected on the way (do not
+  re-propose): eager factory method (`fromDataList()` — would make
   eager the default mindset), re-iterable set, dev-mode size warnings,
   a `first()` terminal (would shadow the legit peek pattern and motivate
   `fromDataSet()` where `fromData($query->fetch())` belongs), field-name
-  `keyBy`, moving `keyBy` onto `collectMap()` (keying belongs to the
-  stream; collect* stays pure sugar), format-driven key autodetection.
+  `keyBy`, reading the key from the raw row (pre-hydration values leak
+  driver quirks into keys and need extra plumbing), moving `keyBy` onto
+  `collectMap()` (keying belongs to the stream; collect* stays pure
+  sugar), format-driven key autodetection.
 - **Attribute evaluation order**: format-scoped attributes (`#[Name]`,
   `#[Fraction]`, `#[DateFormat]` — shared `FormatScoped` interface and a
   generic resolver) are repeatable, evaluated top-down, first match wins

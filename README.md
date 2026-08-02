@@ -91,7 +91,7 @@ Property names map to field names by convention (camelCase ↔ snake_case by def
 
 `fromDataSet()` returns an `EntitySet` — a lazy, single-pass stream of hydrated entities. Nothing is buffered and the data source is not touched until the first consumption; rows hydrate one by one as you iterate, so a result of any size streams in constant memory.
 
-Stream keys are transparent: the keys of the source iteration pass through unchanged (a nette/database `Selection` keys its rows by the table primary key, a plain list yields sequential keys). To re-key the stream, pass `keyBy:` with an entity **property** name — the hydrator resolves it to the data field itself, so the format's naming convention never leaks into calling code:
+Stream keys are transparent: the keys of the source iteration pass through unchanged (a nette/database `Selection` keys its rows by the table primary key, a plain list yields sequential keys). To re-key the stream, pass `keyBy:` with an entity **property** name — the key is read from the hydrated entity, so it carries the property's type (a stringifying driver still yields `int` keys) and the format's naming convention never leaks into calling code. The property must be a hydrated, non-nullable `int` or `string` property — anything else fails loudly before the source is touched:
 
 ```php
 // stream keyed by the source (Selection = primary key)

@@ -7,6 +7,8 @@ use JakubBoucek\Hydrator\Exception\MetadataException;
 use JakubBoucek\Hydrator\Format\Mysql;
 use JakubBoucek\Hydrator\Format\NetteDatabase;
 use JakubBoucek\Hydrator\Hydrator;
+use JakubBoucek\Hydrator\Tests\Fixtures\Book;
+use JakubBoucek\Hydrator\Tests\Fixtures\HookedEntity;
 use JakubBoucek\Hydrator\Tests\Fixtures\NamedEntity;
 use JakubBoucek\Hydrator\Tests\Fixtures\SimpleEntity;
 use Tester\Assert;
@@ -92,34 +94,57 @@ test('explicit keyBy re-keys the stream by an entity property', function (): voi
     Assert::same('B', $entities[20]->title);
 });
 
-test('keyBy is a property name, resolved to the field of the current format', function (): void {
-    $hydrator = new Hydrator(NamedEntity::class, Mysql::class);
+test('the key is read from the hydrated entity: properly typed, format naming never leaks', function (): void {
+    // stringified driver values key as the property type, not the raw string
+    $hydrator = new Hydrator(SimpleEntity::class, Mysql::class);
+    $entities = iterator_to_array(
+        $hydrator->fromDataSet([['id' => '10', 'title' => 'A', 'note' => null]], keyBy: 'id'),
+    );
+    Assert::same([10], array_keys($entities));
 
+    // the caller speaks property names, the field name of the format is internal
+    $hydrator = new Hydrator(NamedEntity::class, Mysql::class);
     $entities = iterator_to_array($hydrator->fromDataSet([
         ['id' => 1, 'some__name' => 'alpha', 'mysql__col' => 'x', 'db__only' => 'y'],
         ['id' => 2, 'some__name' => 'beta', 'mysql__col' => 'x', 'db__only' => 'y'],
     ], keyBy: 'someName'));
-
     Assert::same(['alpha', 'beta'], array_keys($entities));
 });
 
-test('unknown keyBy property throws immediately, before the source is touched', function (): void {
-    $hydrator = new Hydrator(SimpleEntity::class, NetteDatabase::class);
+test('an unusable keyBy property throws immediately, before the source is touched', function (): void {
+    $cases = [
+        [SimpleEntity::class, 'uuid', "~Unknown keyBy property 'uuid'~"],
+        [Book::class, 'inStock', '~must be typed int or string~'],
+        [HookedEntity::class, 'version', '~never hydrated~'],
+        [SimpleEntity::class, 'note', '~must not be nullable~'],
+    ];
 
-    Assert::exception(
-        fn() => $hydrator->fromDataSet(rows(), keyBy: 'uuid'),
-        MetadataException::class,
-        "~Unknown keyBy property 'uuid'~",
-    );
+    foreach ($cases as [$entityClass, $keyBy, $message]) {
+        $hydrator = new Hydrator($entityClass, NetteDatabase::class);
+        Assert::exception(
+            fn() => $hydrator->fromDataSet(rows(), keyBy: $keyBy),
+            MetadataException::class,
+            $message,
+        );
+    }
 });
 
 test('missing key field and invalid items throw', function (): void {
     $hydrator = new Hydrator(SimpleEntity::class, Mysql::class);
 
+    // strict mode: the standard missing-field error covers the key property
     Assert::exception(
         fn() => iterator_to_array($hydrator->fromDataSet([['title' => 'A', 'note' => null]], keyBy: 'id')),
         HydrationException::class,
-        "~Missing field 'id' of the keyBy property~",
+        "~Missing field 'id' in data for property~",
+    );
+    // allowPartial: an uninitialized key property cannot key the stream
+    Assert::exception(
+        fn() => iterator_to_array(
+            $hydrator->fromDataSet([['title' => 'A']], keyBy: 'id', allowPartial: true),
+        ),
+        HydrationException::class,
+        '~Cannot key the stream by .*\$id.*allowPartial~',
     );
     Assert::exception(
         fn() => iterator_to_array($hydrator->fromDataSet(['scalar item'])),

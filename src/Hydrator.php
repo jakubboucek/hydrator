@@ -252,9 +252,10 @@ class Hydrator
      * touched until the first consumption. Keys: the data set's own keys
      * pass through transparently (a Nette Selection keys its iteration by
      * the primary key, a plain list yields sequential keys), or `$keyBy`
-     * re-keys the stream by an entity property — the property name is
-     * resolved to its data field, so the caller never deals with the
-     * format's naming convention.
+     * re-keys the stream by an entity property — the key is read from the
+     * hydrated entity, so it is properly typed and the caller never deals
+     * with the format's naming convention. The keyBy property must be a
+     * hydrated (writable), non-nullable int or string property.
      *
      * @param iterable<int|string, mixed> $dataSet
      * @return EntitySet<T>
@@ -265,15 +266,32 @@ class Hydrator
         bool $allowPartial = false,
         bool $rejectUnknown = false,
     ): EntitySet {
-        $keyField = null;
+        $keySlot = null;
         if ($keyBy !== null) {
-            $slot = $this->slots()[$keyBy] ?? throw new MetadataException(
+            $keySlot = $this->slots()[$keyBy] ?? throw new MetadataException(
                 "Unknown keyBy property '{$keyBy}', entity {$this->entityClass} has no such mapped property.",
             );
-            $keyField = $slot->fieldName;
+            if ($keySlot->kind !== ValueKind::Int && $keySlot->kind !== ValueKind::String) {
+                throw new MetadataException(
+                    "The keyBy property {$this->entityClass}::\${$keyBy} must be typed int or string"
+                    . ' to serve as an array key.',
+                );
+            }
+            if (!$keySlot->writable) {
+                throw new MetadataException(
+                    "The keyBy property {$this->entityClass}::\${$keyBy} is never hydrated"
+                    . ' (readonly, private(set) or virtual), so it cannot key the stream.',
+                );
+            }
+            if ($keySlot->nullable) {
+                throw new MetadataException(
+                    "The keyBy property {$this->entityClass}::\${$keyBy} must not be nullable,"
+                    . ' null is not usable as an array key.',
+                );
+            }
         }
 
-        return new EntitySet($this->hydrateDataSet($dataSet, $keyBy, $keyField, $allowPartial, $rejectUnknown));
+        return new EntitySet($this->hydrateDataSet($dataSet, $keySlot, $allowPartial, $rejectUnknown));
     }
 
     /**
@@ -282,8 +300,7 @@ class Hydrator
      */
     private function hydrateDataSet(
         iterable $dataSet,
-        ?string $keyBy,
-        ?string $keyField,
+        ?PropertySlot $keySlot,
         bool $allowPartial,
         bool $rejectUnknown,
     ): Generator {
@@ -294,20 +311,21 @@ class Hydrator
                 );
             }
             /** @var iterable<string, mixed> $data */
-            $row = is_array($data) ? $data : iterator_to_array($data);
+            $entity = $this->fromData($data, allowPartial: $allowPartial, rejectUnknown: $rejectUnknown);
 
-            if ($keyField !== null) {
-                if (!array_key_exists($keyField, $row)) {
+            if ($keySlot !== null) {
+                if (!$keySlot->reflection->isInitialized($entity)) {
                     throw new HydrationException(
-                        "Missing field '{$keyField}' of the keyBy property"
-                        . " {$this->entityClass}::\${$keyBy} in a data set item.",
+                        "Cannot key the stream by {$this->entityClass}::\${$keySlot->name}:"
+                        . " the field '{$keySlot->fieldName}' is missing in a data set item"
+                        . ' (allowPartial left the property uninitialized).',
                     );
                 }
                 /** @var int|string $key */
-                $key = $row[$keyField];
+                $key = $entity->{$keySlot->name};
             }
 
-            yield $key => $this->fromData($row, allowPartial: $allowPartial, rejectUnknown: $rejectUnknown);
+            yield $key => $entity;
         }
     }
 
