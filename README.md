@@ -48,7 +48,7 @@ $articles = $factory->for(Article::class);
 // single row: array or Traversable (Nette Row / ActiveRow)
 $article = $articles->fromData($explorer->table('article')->get(1));
 
-// whole result: lazy stream keyed by the table primary key
+// whole result: lazy single-pass stream; a Selection keys it by its primary key
 foreach ($articles->fromDataSet($explorer->table('article')) as $id => $article) {
     // ...
 }
@@ -87,6 +87,27 @@ class Article implements Entity
 
 Property names map to field names by convention (camelCase ↔ snake_case by default, defined by the format).
 
+### Data sets and streaming
+
+`fromDataSet()` returns an `EntitySet` — a lazy, single-pass stream of hydrated entities. Nothing is buffered and the data source is not touched until the first consumption; rows hydrate one by one as you iterate, so a result of any size streams in constant memory.
+
+Stream keys are transparent: the keys of the source iteration pass through unchanged (a nette/database `Selection` keys its rows by the table primary key, a plain list yields sequential keys). To re-key the stream, pass `keyBy:` with an entity **property** name — the hydrator resolves it to the data field itself, so the format's naming convention never leaks into calling code:
+
+```php
+// stream keyed by the source (Selection = primary key)
+foreach ($articles->fromDataSet($explorer->table('article')) as $id => $article) { /* … */ }
+
+// re-keyed by a property, materialized into a lookup map
+$byId = $articles->fromDataSet($pdo->query('SELECT * FROM article'), keyBy: 'id')->collectMap();
+
+// materialized into a plain list, keys dropped
+$today = $items->fromDataSet($rows)->collectList();
+```
+
+The set is strictly single-pass: once consumed — iterated or collected, even partially — a second consumption attempt throws a `StreamException`. The library never keeps data or entities around; holding onto results is the application's decision. For data sets that are small by design that decision is first-class: the `collect*` terminals materialize the stream into an array — `collectList()` discards keys, `collectMap()` preserves them (duplicate keys overwrite, as with `iterator_to_array()`). The vocabulary is intentional: lazy streaming is the default state, materialization is a conscious, named, greppable termination of the stream.
+
+There is deliberately no eager variant on the hydrator or factory and no re-iterable set — the lazy path stays the easiest one, and an API that buffered or re-queried behind the scenes would only move the memory decision out of sight.
+
 ### Strictness
 
 Every writable property requires its field in data: a missing field, a `null` for a non-nullable property or a value of an unexpected type throws an exception with the entity class, property and field name in the message. Extra fields in data with no matching property are silently ignored, and fields of non-writable properties (`readonly`, `private(set)`, virtual get-only) are never required. All library exceptions implement the `JakubBoucek\Hydrator\Exception\HydratorException` marker interface.
@@ -104,7 +125,7 @@ There is deliberately no factory-wide default for either switch — tolerance is
 
 A *format* describes how values are represented in data: the field naming convention and the codecs for booleans, date-times, dates and intervals. Formats are stateless and identified by their class name:
 
-- `Format\NetteDatabase` — for nette/database, which already converts values on both sides: instances pass through, booleans stay booleans. `fromDataSet()` auto-detects the primary key of a `Selection` (duck-typed, no hard dependency).
+- `Format\NetteDatabase` — for nette/database, which already converts values on both sides: instances pass through, booleans stay booleans.
 - `Format\Mysql` — for raw PDO/mysqli: date-times as `'Y-m-d H:i:s'`, dates as `'Y-m-d'`, booleans as `0`/`1`, TIME as `'HH:MM:SS'` strings.
 - `Format\Json` — for decoded JSON payloads (APIs): property names as-is (camelCase), date-times as RFC 3339 (a foreign offset is recalculated into the app time zone), dates as `'Y-m-d'`, native booleans, times as `'HH:MM:SS'` strings.
 
