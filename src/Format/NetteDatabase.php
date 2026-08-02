@@ -9,7 +9,6 @@ use DateTimeImmutable;
 use DateTimeZone;
 use JakubBoucek\Hydrator\Attribute\Fraction;
 use JakubBoucek\Hydrator\Exception\ValueException;
-use Throwable;
 
 /**
  * Representation used by nette/database: the layer already converts values
@@ -17,9 +16,6 @@ use Throwable;
  * TIME → DateInterval), so date-times, booleans and intervals pass through
  * as-is on export and instances are accepted on import. Date-time instances
  * are still normalized into the application time zone during hydration.
- *
- * fromDataSet() auto-detects the key field from Selection/ResultSet via
- * duck-typed getPrimary() — no hard dependency on nette/database.
  */
 class NetteDatabase extends Mysql
 {
@@ -74,20 +70,5 @@ class NetteDatabase extends Mysql
         }
 
         return parent::importTime($value, $timeZone);
-    }
-
-    public function detectKeyField(iterable $dataSet): ?string
-    {
-        if (is_object($dataSet) && method_exists($dataSet, 'getPrimary')) {
-            try {
-                $primary = $dataSet->getPrimary(false);
-            } catch (Throwable) {
-                return null;
-            }
-            // Composite (array) or missing primary key is not usable as a single key field
-            return is_string($primary) ? $primary : null;
-        }
-
-        return null;
     }
 }

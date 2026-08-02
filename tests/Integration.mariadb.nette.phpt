@@ -69,8 +69,8 @@ test('roundtrip: extracted data INSERTs back through Explorer', function () use 
     Mariadb::assertReference($reloaded);
 });
 
-test('fromDataSet streams the whole Selection keyed by the primary key', function () use ($hydrator): void {
-    $entities = iterator_to_array($hydrator->fromDataSet(explorer(true, true)->table(TABLE)));
+test('fromDataSet streams the whole Selection, PK keys pass through from its iteration', function () use ($hydrator): void {
+    $entities = $hydrator->fromDataSet(explorer(true, true)->table(TABLE))->collectMap();
 
     Assert::same([1, 2], array_keys($entities));
     Mariadb::assertReference($entities[1]);

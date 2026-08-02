@@ -9,6 +9,7 @@ use DateInterval;
 use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
+use Error;
 use Generator;
 use JsonException;
 use JakubBoucek\Hydrator\Adapter\TypeAdapter;
@@ -248,42 +249,91 @@ class Hydrator
 
     /**
      * Hydrates a stream of data records. Stream-first: returns a lazy,
-     * single-pass generator, nothing is buffered. Keys: explicit `$keyBy`
-     * field, or the format's auto-detection (table primary key on a Nette
-     * Selection), or sequential.
+     * single-pass EntitySet, nothing is buffered and the source is not
+     * touched until the first consumption. Keys: the data set's own keys
+     * pass through transparently (a Nette Selection keys its iteration by
+     * the primary key, a plain list yields sequential keys), or `$keyBy`
+     * re-keys the stream by an entity property — the key is read from the
+     * hydrated entity, so it is properly typed and the caller never deals
+     * with the format's naming convention. The keyBy property must be a
+     * hydrated (writable), non-nullable int or string property.
      *
-     * @param iterable<mixed> $dataSet
-     * @return Generator<int|string, T>
+     * @param iterable<int|string, mixed> $dataSet
+     * @return EntitySet<T>
      */
     public function fromDataSet(
         iterable $dataSet,
         ?string $keyBy = null,
         bool $allowPartial = false,
         bool $rejectUnknown = false,
-    ): Generator {
-        $keyBy ??= $this->format->detectKeyField($dataSet);
+    ): EntitySet {
+        $keySlot = null;
+        if ($keyBy !== null) {
+            $keySlot = $this->slots()[$keyBy] ?? throw new MetadataException(
+                "Unknown keyBy property '{$keyBy}', entity {$this->entityClass} has no such mapped property.",
+            );
+            if ($keySlot->kind !== ValueKind::Int && $keySlot->kind !== ValueKind::String) {
+                throw new MetadataException(
+                    "The keyBy property {$this->entityClass}::\${$keyBy} must be typed int or string"
+                    . ' to serve as an array key.',
+                );
+            }
+            if (!$keySlot->writable) {
+                throw new MetadataException(
+                    "The keyBy property {$this->entityClass}::\${$keyBy} is never hydrated"
+                    . ' (readonly, private(set) or virtual), so it cannot key the stream.',
+                );
+            }
+            if ($keySlot->nullable) {
+                throw new MetadataException(
+                    "The keyBy property {$this->entityClass}::\${$keyBy} must not be nullable,"
+                    . ' null is not usable as an array key.',
+                );
+            }
+        }
 
-        foreach ($dataSet as $data) {
+        return new EntitySet($this->hydrateDataSet($dataSet, $keySlot, $allowPartial, $rejectUnknown));
+    }
+
+    /**
+     * @param iterable<int|string, mixed> $dataSet
+     * @return Generator<int|string, T>
+     */
+    private function hydrateDataSet(
+        iterable $dataSet,
+        ?PropertySlot $keySlot,
+        bool $allowPartial,
+        bool $rejectUnknown,
+    ): Generator {
+        foreach ($dataSet as $key => $data) {
             if (!is_iterable($data)) {
                 throw new HydrationException(
                     'Data set item must be an array or Traversable, got ' . get_debug_type($data) . '.',
                 );
             }
             /** @var iterable<string, mixed> $data */
-            $row = is_array($data) ? $data : iterator_to_array($data);
+            $entity = $this->fromData($data, allowPartial: $allowPartial, rejectUnknown: $rejectUnknown);
 
-            if ($keyBy === null) {
-                yield $this->fromData($row, allowPartial: $allowPartial, rejectUnknown: $rejectUnknown);
-                continue;
+            if ($keySlot !== null) {
+                try {
+                    /** @var int|string $key */
+                    $key = $entity->{$keySlot->name};
+                } catch (Error $e) {
+                    // reflection is consulted only on the error path — the
+                    // hot path stays a plain property read (try is free)
+                    if (!$keySlot->reflection->isInitialized($entity)) {
+                        throw new HydrationException(
+                            "Cannot key the stream by {$this->entityClass}::\${$keySlot->name}:"
+                            . " the field '{$keySlot->fieldName}' is missing in a data set item"
+                            . ' (allowPartial left the property uninitialized).',
+                            previous: $e,
+                        );
+                    }
+                    throw $e; // a get hook failed on its own — not ours to relabel
+                }
             }
 
-            if (!array_key_exists($keyBy, $row)) {
-                throw new HydrationException("Missing key field '{$keyBy}' in a data set item.");
-            }
-
-            /** @var int|string $key */
-            $key = $row[$keyBy];
-            yield $key => $this->fromData($row, allowPartial: $allowPartial, rejectUnknown: $rejectUnknown);
+            yield $key => $entity;
         }
     }
 

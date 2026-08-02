@@ -56,8 +56,8 @@ test('hydrates a Row fetched by SQL query', function () use ($explorer, $books):
     Assert::false($book->inStock);
 });
 
-test('hydrates a whole Selection keyed by the auto-detected primary key', function () use ($explorer, $books): void {
-    $entities = iterator_to_array($books->fromDataSet($explorer->table('book')));
+test('hydrates a whole Selection, the PK keys of its iteration pass through', function () use ($explorer, $books): void {
+    $entities = $books->fromDataSet($explorer->table('book'))->collectMap();
 
     Assert::same([1, 2], array_keys($entities));
     Assert::same('Second', $entities[2]->title);

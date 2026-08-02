@@ -60,11 +60,11 @@ always check per-job conclusions (`gh run view <id> --json jobs`).
 ## Architecture and terminology
 
 Namespace layout (cleanup 2026-08-01): the root keeps the facade
-(`Hydrator`, `HydratorFactory`) and the two most-imported contracts
-(`Entity`, `Struct` — PHP allows the `Struct` class and the `Struct\`
-namespace to coexist); families live in `Converter\`, `Struct\`,
-`Value\` and `Adapter\`, next to the existing `Attribute\`, `Format\`,
-`Exception\` and `Metadata\`.
+(`Hydrator`, `HydratorFactory`), the stream wrapper (`EntitySet`) and the
+two most-imported contracts (`Entity`, `Struct` — PHP allows the `Struct`
+class and the `Struct\` namespace to coexist); families live in
+`Converter\`, `Struct\`, `Value\` and `Adapter\`, next to the existing
+`Attribute\`, `Format\`, `Exception\` and `Metadata\`.
 
 - **Entity** — a plain object with typed public properties implementing the
   empty `Entity` marker interface (decision 2026-07-29: the marker exists to
@@ -73,6 +73,11 @@ namespace to coexist); families live in `Converter\`, `Struct\`,
 - **Data** — the counterpart of the entity: an associative record
   (`array`/`Traversable` — Nette Row, ActiveRow, decoded JSON…). A key in
   Data is a **field**. Methods: `fromData()`, `fromDataSet()`, `toData()`.
+- **EntitySet** (`src/EntitySet.php`) — the lazy single-pass stream
+  returned by `fromDataSet()`: wraps one generator, consumption is
+  one-shot (a second attempt throws `Exception\StreamException`), the
+  materializing terminals `collectList()`/`collectMap()` are thin
+  `iterator_to_array` sugar for data sets small by design.
 - **Format** (`src/Format/`) — stateless definition of a representation:
   field naming convention + value codecs per logical type. Identified by
   class-string (the engine holds the instance internally); customization by
@@ -100,8 +105,51 @@ namespace to coexist); families live in `Converter\`, `Struct\`,
 
 - **Stream-first, no data caching.** The library never caches data or
   entities — that is the application's domain. `fromDataSet()` returns a
-  lazy single-pass `Generator`. The only caches are entity metadata and
-  compiled plans.
+  lazy single-pass `EntitySet` (0.5, design dialogue 2026-08-02/03,
+  triggered by the first firovo.cz deployment): the source is untouched
+  until the first consumption, a second consumption — iterate or
+  collect, any combination, including after a `break` — throws
+  `StreamException` instead of PHP's cryptic generator-rewind error. The
+  raw generator from `getIterator()` deliberately supports the peek
+  pattern (`current()` hydrates the first entity without advancing, a
+  subsequent foreach still delivers the whole stream — e.g. analyze the
+  first row before writing a CSV). `collectList()` drops keys,
+  `collectMap()` preserves them (duplicates overwrite — plain
+  `iterator_to_array` semantics, a by-design iterator property, not the
+  hydrator's problem; documented modestly only). The collect* vocabulary
+  is deliberate: materialization is a conscious, greppable stream
+  termination for data sets small by design; asymmetry of convenience —
+  the lazy path stays the easiest. The only caches are entity metadata
+  and compiled plans.
+- **Stream keys are transparent** (0.5): the source's own iteration keys
+  pass through (Nette `Selection` keys its iteration by the PK natively
+  — which exposed the former duck-typed `getPrimary()` autodetection as
+  a reimplementation of information the source already carried;
+  `Format::detectKeyField()` removed). Explicit `keyBy` is an entity
+  **property** name — the API never speaks field names (the caller would
+  need to know the format's NameConverter). The key is read from the
+  **hydrated entity** (simplification 2026-08-03): keys carry the
+  property's type, uniform across drivers (stringified PDO still keys by
+  int). An unusable keyBy property fails eagerly with MetadataException
+  at the `fromDataSet()` call, before the source is touched: unknown,
+  not int/string-kinded (custom/enum objects cannot key an array —
+  exotic keys are manual-foreach domain), non-writable (never hydrated)
+  or nullable. Runtime: `allowPartial` leaving the key property
+  uninitialized → `HydrationException` — via a zero-cost guard (plain
+  property read in try/catch, PHP try is free until an exception flies;
+  reflection `isInitialized()` runs only on the error path, and only to
+  avoid relabeling an Error thrown by a get hook). Per-row reflection in
+  the hot loop is forbidden territory (2026-08-03; extraction's
+  per-property `isInitialized()` is the accepted, documented exception).
+  Rejected on the way (do not
+  re-propose): eager factory method (`fromDataList()` — would make
+  eager the default mindset), re-iterable set, dev-mode size warnings,
+  a `first()` terminal (would shadow the legit peek pattern and motivate
+  `fromDataSet()` where `fromData($query->fetch())` belongs), field-name
+  `keyBy`, reading the key from the raw row (pre-hydration values leak
+  driver quirks into keys and need extra plumbing), moving `keyBy` onto
+  `collectMap()` (keying belongs to the stream; collect* stays pure
+  sugar), format-driven key autodetection.
 - **Attribute evaluation order**: format-scoped attributes (`#[Name]`,
   `#[Fraction]`, `#[DateFormat]` — shared `FormatScoped` interface and a
   generic resolver) are repeatable, evaluated top-down, first match wins
@@ -246,6 +294,11 @@ namespace to coexist); families live in `Converter\`, `Struct\`,
   (the DatabaseValue idea). Namespace cleanup in the same release.
 - **0.4.1** (2026-08-01) — per-call input switches `allowPartial` +
   `rejectUnknown` (see the partial-update decision).
+- **0.5** (implemented 2026-08-03, branch `entity-set`) — `EntitySet`
+  wrapper for `fromDataSet()` (BC break of the return type),
+  `StreamException`, transparent key passthrough, property-based
+  `keyBy`, removal of `Format::detectKeyField()` (see the stream-first
+  and stream-keys decisions).
 
 ## Future candidates (analyzed, not scheduled)
 
@@ -270,9 +323,6 @@ namespace to coexist); families live in `Converter\`, `Struct\`,
 - **DB-structure ↔ entity mapping validator** (idea 2026-08-01) — an
   integration-test-level tool comparing a live database schema with
   entity metadata; deliberately not a runtime feature.
-- **`fromDataSet` sequential-keys override** — when the source has
-  `getPrimary()` (Selection), auto-detection cannot be suppressed;
-  a possible additive `keyBy: false` sentinel.
 - Composite keys, more `Type\*` attributes as needed.
 
 First real consumer: project Lexion (infosoud-checker; PHP 8.5,

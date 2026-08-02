@@ -48,18 +48,6 @@ abstract class Format implements FormatScope
     }
 
     /**
-     * Auto-detects the key field of a data set (e.g. a table primary key)
-     * for Hydrator::fromDataSet() when no explicit key is requested.
-     * Null means keyless (sequential keys).
-     *
-     * @param iterable<mixed> $dataSet
-     */
-    public function detectKeyField(iterable $dataSet): ?string
-    {
-        return null;
-    }
-
-    /**
      * @throws ValueException
      */
     abstract public function importBool(mixed $value): bool;
