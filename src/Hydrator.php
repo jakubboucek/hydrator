@@ -398,6 +398,68 @@ class Hydrator
         return $data;
     }
 
+    /**
+     * Is the stored value of the mapped property initialized? Hook-free
+     * by contract: the answer comes from reflection on the backing store,
+     * property hooks are never invoked and no user code ever runs. The
+     * promise is "the stored value is initialized", not "reading is
+     * safe" — a get hook on a backed property may still fail on its own
+     * uninitialized dependencies.
+     *
+     * For a non-nullable property, plain isset($entity->prop) (or ??=)
+     * answers the same question natively — reach for this method where
+     * isset() falls short: nullable properties with patch semantics
+     * (isset() conflates a stored null with uninitialized), entities
+     * with get hooks (isset() invokes them) and generic code.
+     *
+     * The property name is validated eagerly: an unknown property is a
+     * bug, not "not set". Virtual properties have no stored state to
+     * ask about, so they are rejected the same way.
+     *
+     * @param T $entity
+     */
+    public function isInitialized(Entity $entity, string $property): bool
+    {
+        $this->assertEntity($entity);
+
+        $slot = $this->slots()[$property] ?? throw new MetadataException(
+            "Unknown property '{$property}', entity {$this->entityClass} has no such mapped property.",
+        );
+
+        if ($slot->virtual) {
+            throw new MetadataException(
+                "Property {$this->entityClass}::\${$property} is virtual, so it has no stored state"
+                . ' to ask about — the hydrator cannot process virtual properties.',
+            );
+        }
+
+        return $slot->reflection->isInitialized($entity);
+    }
+
+    /**
+     * Names of the mapped properties whose stored value is initialized —
+     * the input for patch logic that branches on what a partial entity
+     * carries. Returns names only, deliberately never values. Virtual
+     * properties are skipped (no stored state); the same hook-free
+     * contract as isInitialized() applies, so no user code ever runs.
+     *
+     * @param T $entity
+     * @return list<string>
+     */
+    public function getInitializedPropertyNames(Entity $entity): array
+    {
+        $this->assertEntity($entity);
+
+        $names = [];
+        foreach ($this->slots() as $name => $slot) {
+            if (!$slot->virtual && $slot->reflection->isInitialized($entity)) {
+                $names[] = $name;
+            }
+        }
+
+        return $names;
+    }
+
     private function assertEntity(Entity $entity): void
     {
         if (!$entity instanceof $this->entityClass) {
