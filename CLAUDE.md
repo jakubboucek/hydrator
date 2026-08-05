@@ -445,6 +445,17 @@ and failures loud. See `tests/Integration.mariadb.edgeCases.phpt`:
   matches exact classes — a subclass would be silently ignored),
   **`Format::__construct`** (statelessness + class-string identity
   contract) and `@internal` metadata classes. Enums are final by nature.
+- **Method naming** (decision 2026-08-05): every public method starts
+  with a verb that categorizes the call — transformations use direction
+  pairs (`fromData`/`toData`, `import*`/`export*`, `fromNative`/
+  `toNative`), stream terminals use `collect*`, predicates use
+  `is`/`has`, and plain data-returning getters carry `get`
+  (`getFieldName()`, `getInitializedPropertyNames()`). A getter named
+  as a bare noun is forbidden — it hides the call category and drifts
+  toward PHP's "rubber" dual getter/setter functions
+  (`error_reporting()` et al.), a trap once a setter counterpart is
+  ever needed. `Format::fieldName()` was renamed to `getFieldName()`
+  under this rule (pre-0.6, no external consumers).
 - **Dependency constraints policy**: quality-check tools (phpstan/phpstan,
   nette/tester) are pinned to exact versions incl. patch — they execute
   the tests, they are not their subject, and a tool version drift must

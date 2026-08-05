@@ -932,7 +932,7 @@ class Hydrator
     private function resolveFieldName(ReflectionProperty $property): string
     {
         return $this->resolveScopedAttribute($property, Name::class)->name
-            ?? $this->format->fieldName($property->getName());
+            ?? $this->format->getFieldName($property->getName());
     }
 
     /**
