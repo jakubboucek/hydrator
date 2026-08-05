@@ -42,7 +42,7 @@ abstract class Format implements FormatScope
         return new SnakeCaseConverter();
     }
 
-    final public function fieldName(string $propertyName): string
+    final public function getFieldName(string $propertyName): string
     {
         return ($this->converter ??= $this->createNameConverter())->toFieldName($propertyName);
     }

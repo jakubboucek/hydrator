@@ -26,6 +26,7 @@ final readonly class PropertySlot
         public bool $hasDefault,
         public bool $writable,
         public bool $readable,
+        public bool $virtual,
         public ?Fraction $fraction,
         public ?DateFormat $dateFormat,
         public ?CustomSpec $custom,

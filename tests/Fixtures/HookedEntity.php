@@ -12,12 +12,12 @@ class HookedEntity implements Entity
     public string $firstName;
     public string $lastName;
 
-    /** Virtual get-only property: never hydrated nor extracted. */
+    /** Virtual get-only property: no stored state, ignored by the hydrator. */
     public string $fullName {
         get => $this->firstName . ' ' . $this->lastName;
     }
 
-    /** Virtual write-only property: hydrated (set hook), never extracted. */
+    /** Virtual write-only property: no stored state, ignored by the hydrator. */
     public string $names {
         set {
             [$this->firstName, $this->lastName] = explode(' ', $value, 2) + [1 => ''];

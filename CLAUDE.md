@@ -203,10 +203,26 @@ class and the `Struct\` namespace to coexist); families live in
   "uninitialized" a legitimate state with meaning (field untouched in DB).
   Validation returns only when a concrete consumer use-case defines which
   question is actually being asked.
-- **Hooks/visibility**: virtual get-only → skipped both ways; virtual with
-  set hook → hydrated only; backed with hooks → both ways (hooks apply);
-  `private(set)`/`protected(set)`/`readonly` → extracted, never hydrated
-  (their fields are not required in input data).
+- **Hooks/visibility** (narrowed 2026-08-05, 0.6): the mapped domain is
+  the stored state of **backed public properties**; the hydrator acts
+  as an ordinary external caller, so participation follows PHP
+  visibility natively — backed hooks apply as for any caller,
+  `private(set)`/`protected(set)`/`readonly` → extracted, never
+  hydrated (their fields are not required in input data). Virtual
+  properties (no backing store) → ignored entirely, both directions;
+  get/set hooks are a private interface between the entity and the
+  application. The pre-0.6 virtual-with-set-hook hydration was removed
+  as the only place the engine actively opted into hook machinery (see
+  the 0.6 roadmap entry).
+- **Field vocabulary is internal** (2026-08-05): the application speaks
+  property names exclusively; field names and format-encoded value
+  representations are the vocabulary of the hydrator↔storage boundary.
+  `toData()` output is an opaque payload addressed to the storage
+  driver — application logic must never introspect or hand-assemble it
+  (both keys and values are format-encoded). Every API speaks property
+  names (precedent: `keyBy`). Consequence: property-vocabulary state
+  introspection can only be provided by the hydrator
+  (`isInitialized()`/`getInitializedPropertyNames()`).
 - **Two mappings of a TIME column** (2026-07-29/30, verified empirically
   on MariaDB 12.2 + nette/database sources — MariaDB silently accepts
   −838:59:59…838:59:59 including '24:00:00'; TIME is documented as
@@ -299,6 +315,68 @@ class and the `Struct\` namespace to coexist); families live in
   `StreamException`, transparent key passthrough, property-based
   `keyBy`, removal of `Format::detectKeyField()` (see the stream-first
   and stream-keys decisions).
+- **0.6** (implemented 2026-08-05, branch `initialized-properties`,
+  design dialogue on issue #1) — partial-entity introspection + domain
+  narrowing (plus the `Format::fieldName()` → `getFieldName()` rename
+  under the method-naming convention, see Conventions):
+  - **Domain = backed public properties.** The hydrator acts as an
+    ordinary external caller over stored state; direction of
+    participation follows PHP visibility natively (readable by anyone →
+    extracted, writable by anyone → hydrated; asymmetric visibility ⇒
+    asymmetric participation is the user's responsibility). Virtual
+    properties have no stored state → outside the domain: the
+    virtual-with-set-hook hydration is REMOVED (the only place the
+    engine actively opted into hook machinery; silent BC change — the
+    field switches from required+consumed to ignored, changelog +
+    migration pointer to CustomValue/TypeAdapter/Format subclass).
+    Virtuals stay **mapped but inert** (slot exists, both directions
+    false) so the engine can issue precise errors and keep the info for
+    future use — but the mapping never legitimizes their fields as
+    input: the hydrator behaves as if virtuals were not declared, so a
+    data key matching a virtual's field is rejected by `rejectUnknown`
+    like any unknown key (the slot knowledge only enriches the error
+    message; in the default mode such a key is silently ignored like
+    any extra field — accepting-and-discarding it would be worse than
+    both). Side effect: closes the latent `keyBy` hole (a virtual-set
+    int property passed eager checks, then crashed with a cryptic
+    write-only Error — now rejected eagerly as non-writable).
+  - **`isInitialized(Entity, string $property): bool` +
+    `getInitializedPropertyNames(Entity): list<string>`** on Hydrator —
+    hook-free stored-state introspection in property vocabulary (the
+    application must never speak field names; `toData()` output is an
+    opaque payload for the storage driver — the reason the workaround
+    from issue #1 is invalid). The plural returns property NAMES only,
+    deliberately no values (prevents misuse as a reader) — renamed
+    from `initializedProperties` to kill the expectation of receiving
+    the properties themselves ("keys" rejected too: in this library
+    keys mean stream/array keys, which are property values). Backed properties (with or without
+    hooks): `ReflectionProperty::isInitialized()`, hooks never invoked,
+    no user code ever runs. Unknown property → MetadataException;
+    virtual property → MetadataException with a human message plus an
+    explicit addendum that virtual properties cannot be processed
+    (virtuals have no stored state — asking is a caller bug, keyBy
+    precedent). The plural silently skips virtuals (toData precedent).
+    Today its result coincides with the set of properties `toData()`
+    would emit, but the equivalence is deliberately NOT a contract —
+    the future `#[Omitted]` will apply to extraction, not to state
+    introspection.
+    The promise is "stored value is initialized", NOT "reading is safe"
+    (a backed get hook may still throw on its own uninitialized
+    dependencies). Docs teach native idioms first: `isset()`/`??=` are
+    safe on uninitialized typed properties and exact for non-nullable
+    ones — the API is for nullable patch semantics (isset conflates
+    set-null with unset), hooked entities and generic code. Probes
+    2026-08-05 (PHP 8.4 + 8.5 identical, `tests/tmp/probe-*.php`):
+    reflection `isInitialized()` on a virtual property always returns
+    true (useless); `isset()` invokes get hooks and crashes on an
+    uninitialized backing/dependency; reflection on backed hooked
+    properties reads the backing without invoking hooks. Rejected on
+    the way (do not re-propose): probe-by-read for virtuals with
+    Error-message suffix matching (fragile, executes user code, has a
+    write-only corner case); `toData()` + `array_key_exists` as the
+    answer (breaks field-vocabulary isolation); an
+    `initializedProperties()` switch to exclude virtuals (ignoring
+    virtuals is unconditional).
 
 ## Future candidates (analyzed, not scheduled)
 
@@ -323,6 +401,21 @@ class and the `Struct\` namespace to coexist); families live in
 - **DB-structure ↔ entity mapping validator** (idea 2026-08-01) — an
   integration-test-level tool comparing a live database schema with
   entity metadata; deliberately not a runtime feature.
+- **`#[Omitted]` attribute** (agreed 2026-08-05, planned next extension
+  after 0.6, not part of it) — excludes a backed public property from
+  de/hydration. Definitely **format-scoped** (repeatable, same resolver
+  and top-down first-match rules as `#[Name]`/`#[Fraction]`, catch-all
+  default) — e.g. omit for database formats but emit into Json. It
+  applies to extraction, NOT to state introspection — an omitted
+  property still has stored state, so `isInitialized()`/
+  `getInitializedPropertyNames()` keep answering for it (which is why
+  the getInitializedPropertyNames ≡ toData equivalence is not a
+  contract); the exact
+  hydration-side semantics (is the field still required/consumed?) is
+  an open question for its own design round. Use case: public backed
+  app-only state (runtime cache, derived intermediate) that today
+  forces a field in strict hydration; private/protected properties are
+  already unmapped and need no attribute. Additive feature.
 - Composite keys, more `Type\*` attributes as needed.
 
 First real consumer: project Lexion (infosoud-checker; PHP 8.5,
@@ -370,6 +463,17 @@ and failures loud. See `tests/Integration.mariadb.edgeCases.phpt`:
   matches exact classes — a subclass would be silently ignored),
   **`Format::__construct`** (statelessness + class-string identity
   contract) and `@internal` metadata classes. Enums are final by nature.
+- **Method naming** (decision 2026-08-05): every public method starts
+  with a verb that categorizes the call — transformations use direction
+  pairs (`fromData`/`toData`, `import*`/`export*`, `fromNative`/
+  `toNative`), stream terminals use `collect*`, predicates use
+  `is`/`has`, and plain data-returning getters carry `get`
+  (`getFieldName()`, `getInitializedPropertyNames()`). A getter named
+  as a bare noun is forbidden — it hides the call category and drifts
+  toward PHP's "rubber" dual getter/setter functions
+  (`error_reporting()` et al.), a trap once a setter counterpart is
+  ever needed. `Format::fieldName()` was renamed to `getFieldName()`
+  under this rule (pre-0.6, no external consumers).
 - **Dependency constraints policy**: quality-check tools (phpstan/phpstan,
   nette/tester) are pinned to exact versions incl. patch — they execute
   the tests, they are not their subject, and a tool version drift must
