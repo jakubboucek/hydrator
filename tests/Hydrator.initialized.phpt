@@ -2,11 +2,13 @@
 
 declare(strict_types=1);
 
+use JakubBoucek\Hydrator\Entity;
 use JakubBoucek\Hydrator\Exception\InvalidEntityException;
 use JakubBoucek\Hydrator\Exception\MetadataException;
 use JakubBoucek\Hydrator\Format\Mysql;
 use JakubBoucek\Hydrator\Format\NetteDatabase;
 use JakubBoucek\Hydrator\Hydrator;
+use JakubBoucek\Hydrator\InitializationState;
 use JakubBoucek\Hydrator\Tests\Fixtures\HookedEntity;
 use JakubBoucek\Hydrator\Tests\Fixtures\SimpleEntity;
 use Tester\Assert;
@@ -101,6 +103,49 @@ test('the plural mirrors partial hydration and never runs user code', function (
     );
 });
 
+test('getInitializationState aggregates the stored state', function (): void {
+    $hydrator = new Hydrator(SimpleEntity::class, Mysql::class);
+
+    Assert::same(InitializationState::Empty, $hydrator->getInitializationState(new SimpleEntity()));
+
+    $patch = $hydrator->fromData(['id' => 1], allowPartial: true);
+    Assert::same(InitializationState::Partial, $hydrator->getInitializationState($patch));
+
+    // a stored null is initialized — Complete includes it
+    $full = $hydrator->fromData(['id' => 1, 'title' => 't', 'note' => null]);
+    Assert::same(InitializationState::Complete, $hydrator->getInitializationState($full));
+});
+
+test('the state counts non-writable backed properties, virtuals never', function (): void {
+    $hydrator = new Hydrator(HookedEntity::class, NetteDatabase::class);
+
+    // fresh instance: private(set) default + constructor readonly → Partial
+    Assert::same(InitializationState::Partial, $hydrator->getInitializationState(new HookedEntity()));
+
+    // full hydration initializes every backed property; the virtual
+    // fullName/names have no stored state and do not block Complete
+    $entity = $hydrator->fromData([
+        'id' => 1,
+        'first_name' => 'Ada',
+        'last_name' => 'Lovelace',
+        'email' => 'ada@example.com',
+    ]);
+    Assert::same(InitializationState::Complete, $hydrator->getInitializationState($entity));
+});
+
+class OnlyVirtualEntity implements Entity
+{
+    public string $label {
+        get => 'x';
+    }
+}
+
+test('an entity with no mapped property is vacuously Empty, never Complete', function (): void {
+    $hydrator = new Hydrator(OnlyVirtualEntity::class, Mysql::class);
+
+    Assert::same(InitializationState::Empty, $hydrator->getInitializationState(new OnlyVirtualEntity()));
+});
+
 test('a foreign entity instance is refused like everywhere else', function (): void {
     $hydrator = new Hydrator(SimpleEntity::class, Mysql::class);
 
@@ -110,6 +155,10 @@ test('a foreign entity instance is refused like everywhere else', function (): v
     );
     Assert::exception(
         fn() => $hydrator->getInitializedPropertyNames(new HookedEntity()),
+        InvalidEntityException::class,
+    );
+    Assert::exception(
+        fn() => $hydrator->getInitializationState(new HookedEntity()),
         InvalidEntityException::class,
     );
 });

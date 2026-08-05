@@ -460,6 +460,46 @@ class Hydrator
         return $names;
     }
 
+    /**
+     * Aggregate initialization state of the entity's stored values:
+     * Empty (no mapped property is initialized), Partial, or Complete
+     * (all of them). An entity with no mapped properties reports Empty.
+     * The same hook-free contract as isInitialized() applies — the
+     * answer comes from reflection on the backing stores, no user code
+     * ever runs and virtual properties never count.
+     *
+     * The state is relative to the entity's own declaration, nothing
+     * more: Complete does not promise insert-readiness or read-safety,
+     * Empty does not mean invalid.
+     *
+     * @param T $entity
+     */
+    public function getInitializationState(Entity $entity): InitializationState
+    {
+        $this->assertEntity($entity);
+
+        $initialized = false;
+        $uninitialized = false;
+
+        foreach ($this->slots() as $slot) {
+            if ($slot->virtual) {
+                continue;
+            }
+
+            if ($slot->reflection->isInitialized($entity)) {
+                $initialized = true;
+            } else {
+                $uninitialized = true;
+            }
+
+            if ($initialized && $uninitialized) {
+                return InitializationState::Partial;
+            }
+        }
+
+        return $initialized ? InitializationState::Complete : InitializationState::Empty;
+    }
+
     private function assertEntity(Entity $entity): void
     {
         if (!$entity instanceof $this->entityClass) {
