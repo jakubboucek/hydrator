@@ -53,7 +53,10 @@ always check per-job conclusions (`gh run view <id> --json jobs`).
   done or when CI verification is needed.
 - **Releases**: annotated tags with a real description, created only on
   the user's explicit instruction (as is merging branches); Packagist is
-  handled manually by the user. Design changes are proposed and approved
+  handled manually by the user. GitHub Releases mirror the tags: the
+  release title is the bare version (`0.6.0`, no `v` prefix), the notes
+  are the tag message verbatim (its subject line as the first line of
+  the description, PGP signature stripped). Design changes are proposed and approved
   before implementation — the user drives decisions, iterations are
   design-dialogue first, code second.
 
