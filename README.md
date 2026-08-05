@@ -136,11 +136,23 @@ Where the native idioms fall short, the hydrator answers — from the backing st
 ```php
 $hydrator->isInitialized($entity, 'note');       // true also for a stored null
 $hydrator->getInitializedPropertyNames($entity); // e.g. ['id', 'note'] — names only, never values
+$hydrator->getInitializationState($entity);      // InitializationState::Empty / Partial / Complete
 ```
 
 - **Nullable properties with patch semantics** — `isset()` conflates a stored `null` ("set the column to NULL") with uninitialized ("don't touch it"); `isInitialized()` keeps them apart.
 - **Entities with get hooks** — `isset()` invokes the hook, which crashes on an uninitialized backing; the hydrator reads the backing store via reflection and never invokes hooks, so no user code runs.
 - **Generic code** — a generic save/patch routine can branch on `getInitializedPropertyNames()` without touching a single value.
+- **Aggregate questions** — `getInitializationState()` classifies the whole entity as `Empty`, `Partial` or `Complete`, e.g. to skip work on an empty patch. The state is relative to the entity's own declaration, nothing more: `Complete` promises neither "ready to INSERT" nor "safe to read", and an entity with no mapped properties reports `Empty`.
+
+In a repository where extraction happens anyway, the cheapest empty-patch guard needs no introspection at all — extract first and test the payload (this reads no field names or values, and an `update()` needs the guard anyway):
+
+```php
+$data = $hydrator->toData($changes);
+if ($data === []) {
+    return;
+}
+$table->update($data);
+```
 
 An unknown property name throws a `MetadataException` — a typo is a bug, not "not set". So does asking about a virtual property: it has no stored state to ask about. The promise is precisely *the stored value is initialized*, not *reading is safe* — a get hook may still fail on its own uninitialized dependencies. Write get hooks to tolerate uninitialized state (or accept the consequences): the hydrator never forces partial entities on you — the strict default requires every field — it only enables them.
 

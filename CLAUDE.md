@@ -225,7 +225,11 @@ class and the `Struct\` namespace to coexist); families live in
   (both keys and values are format-encoded). Every API speaks property
   names (precedent: `keyBy`). Consequence: property-vocabulary state
   introspection can only be provided by the hydrator
-  (`isInitialized()`/`getInitializedPropertyNames()`).
+  (`isInitialized()`/`getInitializedPropertyNames()`). One deliberate
+  carve-out (2026-08-05): testing the payload for emptiness —
+  `toData($e) === []` — is legitimate, it reads neither field names
+  nor values (and a repository needs that guard before `update()`
+  anyway); the recommended idiom where extraction happens next.
 - **Two mappings of a TIME column** (2026-07-29/30, verified empirically
   on MariaDB 12.2 + nette/database sources — MariaDB silently accepts
   −838:59:59…838:59:59 including '24:00:00'; TIME is documented as
@@ -380,6 +384,34 @@ class and the `Struct\` namespace to coexist); families live in
     answer (breaks field-vocabulary isolation); an
     `initializedProperties()` switch to exclude virtuals (ignoring
     virtuals is unconditional).
+- **0.6 follow-up** (implemented 2026-08-05, branch
+  `initialization-state`, version assigned at release) —
+  **`getInitializationState(Entity): InitializationState`** on
+  Hydrator; `InitializationState` is a pure root-namespace enum with
+  cases `Empty`/`Partial`/`Complete`. Aggregate stored-state
+  introspection: the state of the entity relative to its OWN
+  declaration (backed public properties; virtuals never count) —
+  deliberately format- and attribute-independent, which is what
+  separates it from the removed validation API (that one would have to
+  answer against something external: schema, format, future
+  `#[Omitted]`). Motivating consumer: skipping work on an empty patch
+  (`getInitializedPropertyNames($e) === []` was the clumsy spelling).
+  Same hook-free contract as the rest of the introspection; `Partial`
+  short-circuits on the first initialized+uninitialized pair. Promise
+  limits documented: `Complete` ≠ insert-ready and ≠ read-safe,
+  `Empty` ≠ invalid; a `private(set)` property never populated keeps
+  an entity below `Complete` forever (truth, not a defect). An entity
+  with no mapped properties is vacuously both all- and
+  none-initialized → defined as `Empty` (matches the empty `toData()`
+  payload). Rejected on the way (do not re-propose): a "minimum
+  satisfied" case (all non-nullable & non-default filled) — the
+  validation-API revenant, schema-blind (autoincrement `public int
+  $id` is uninitialized on a perfectly insert-ready entity); a
+  NULL-filling "complete the entity" method (would erase the
+  uninitialized/null distinction the library exists to preserve); a
+  bare `hasInitializedProperties()` predicate (plural is ambiguous
+  between "any" and "all" — the enum removes the ambiguity
+  structurally).
 
 ## Future candidates (analyzed, not scheduled)
 
@@ -404,6 +436,13 @@ class and the `Struct\` namespace to coexist); families live in
 - **DB-structure ↔ entity mapping validator** (idea 2026-08-01) — an
   integration-test-level tool comparing a live database schema with
   entity metadata; deliberately not a runtime feature.
+- **Reject entities with no mapped property at metadata build** (noted
+  2026-08-05, from the getInitializationState edge-case dialogue): an
+  Entity whose every public property is virtual (or that has none) has
+  nothing to de/hydrate and arguably breaks the project paradigm at
+  the root — a candidate for a loud MetadataException when slots come
+  out empty. Not decided; today such an entity is legal and reports
+  `InitializationState::Empty` forever.
 - **`#[Omitted]` attribute** (agreed 2026-08-05, planned next extension
   after 0.6, not part of it) — excludes a backed public property from
   de/hydration. Definitely **format-scoped** (repeatable, same resolver
