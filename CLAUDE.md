@@ -203,10 +203,26 @@ class and the `Struct\` namespace to coexist); families live in
   "uninitialized" a legitimate state with meaning (field untouched in DB).
   Validation returns only when a concrete consumer use-case defines which
   question is actually being asked.
-- **Hooks/visibility**: virtual get-only → skipped both ways; virtual with
-  set hook → hydrated only; backed with hooks → both ways (hooks apply);
-  `private(set)`/`protected(set)`/`readonly` → extracted, never hydrated
-  (their fields are not required in input data).
+- **Hooks/visibility** (narrowed 2026-08-05, 0.6): the mapped domain is
+  the stored state of **backed public properties**; the hydrator acts
+  as an ordinary external caller, so participation follows PHP
+  visibility natively — backed hooks apply as for any caller,
+  `private(set)`/`protected(set)`/`readonly` → extracted, never
+  hydrated (their fields are not required in input data). Virtual
+  properties (no backing store) → ignored entirely, both directions;
+  get/set hooks are a private interface between the entity and the
+  application. The pre-0.6 virtual-with-set-hook hydration was removed
+  as the only place the engine actively opted into hook machinery (see
+  the 0.6 roadmap entry).
+- **Field vocabulary is internal** (2026-08-05): the application speaks
+  property names exclusively; field names and format-encoded value
+  representations are the vocabulary of the hydrator↔storage boundary.
+  `toData()` output is an opaque payload addressed to the storage
+  driver — application logic must never introspect or hand-assemble it
+  (both keys and values are format-encoded). Every API speaks property
+  names (precedent: `keyBy`). Consequence: property-vocabulary state
+  introspection can only be provided by the hydrator
+  (`isInitialized()`/`getInitializedPropertyNames()`).
 - **Two mappings of a TIME column** (2026-07-29/30, verified empirically
   on MariaDB 12.2 + nette/database sources — MariaDB silently accepts
   −838:59:59…838:59:59 including '24:00:00'; TIME is documented as
@@ -299,8 +315,10 @@ class and the `Struct\` namespace to coexist); families live in
   `StreamException`, transparent key passthrough, property-based
   `keyBy`, removal of `Format::detectKeyField()` (see the stream-first
   and stream-keys decisions).
-- **0.6** (agreed 2026-08-05, design dialogue on issue #1, not yet
-  implemented) — partial-entity introspection + domain narrowing:
+- **0.6** (implemented 2026-08-05, branch `initialized-properties`,
+  design dialogue on issue #1) — partial-entity introspection + domain
+  narrowing (plus the `Format::fieldName()` → `getFieldName()` rename
+  under the method-naming convention, see Conventions):
   - **Domain = backed public properties.** The hydrator acts as an
     ordinary external caller over stored state; direction of
     participation follows PHP visibility natively (readable by anyone →

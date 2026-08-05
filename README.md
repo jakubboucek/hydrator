@@ -11,8 +11,8 @@ Entities are plain data objects: typed public properties, [property hooks](https
 
 General mapping libraries struggle with entities written in modern PHP style. This library is designed around them by design:
 
-- **Property hooks aware** — a virtual get-only property is skipped in both directions, a property with a set hook is writable, `private(set)`/`protected(set)`/`readonly` properties are extracted but never written.
-- **Partial updates** — extraction distinguishes *uninitialized* from *null*: only initialized properties produce fields, so a partially filled entity naturally becomes a partial `UPDATE`.
+- **Property hooks aware** — the hydrator works with the stored state of backed public properties as an ordinary external caller: hooks on backed properties apply as for any other code, `private(set)`/`protected(set)`/`readonly` properties are extracted but never written, and virtual properties (no backing store) are ignored entirely — get/set hooks stay a private interface between the entity and the application.
+- **Partial updates** — extraction distinguishes *uninitialized* from *null*: only initialized properties produce fields, so a partially filled entity naturally becomes a partial `UPDATE`; `isInitialized()` and `getInitializedPropertyNames()` let application code ask what a partial entity carries.
 - **Pass-through of already-typed values** — layers like [nette/database](https://github.com/nette/database) return `DateTimeImmutable`, `bool` and `DateInterval` instances; the hydrator accepts them as-is instead of demanding strings.
 - **Database type nuances** — `DATE` vs `DATETIME` (`#[Type\Date]`) and `TIME` columns (day-scoped `#[Type\Time]` or full-range `DateInterval`) are first-class citizens.
 - **Deterministic time zones** — every hydrated date-time is normalized into the application time zone.
@@ -110,16 +110,42 @@ There is deliberately no eager variant on the hydrator or factory and no re-iter
 
 ### Strictness
 
-Every writable property requires its field in data: a missing field, a `null` for a non-nullable property or a value of an unexpected type throws an exception with the entity class, property and field name in the message. Extra fields in data with no matching property are silently ignored, and fields of non-writable properties (`readonly`, `private(set)`, virtual get-only) are never required. All library exceptions implement the `JakubBoucek\Hydrator\Exception\HydratorException` marker interface.
+Every writable property requires its field in data: a missing field, a `null` for a non-nullable property or a value of an unexpected type throws an exception with the entity class, property and field name in the message. Extra fields in data with no matching property are silently ignored, and fields of non-writable backed properties (`readonly`, `private(set)`) are never required. Virtual properties have no stored state, so the hydrator ignores them entirely — a data key matching a virtual property's would-be field is foreign data like any other extra key. All library exceptions implement the `JakubBoucek\Hydrator\Exception\HydratorException` marker interface.
 
 Legacy zero dates (`'0000-00-00'`, `'0000-00-00 00:00:00'`) hydrate as `null` with an `E_USER_WARNING` — matching nette/database's behavior — so a non-nullable property over such data fails loudly instead of receiving a nonsense date.
 
 Both strictness rules have explicit, per-call switches on `fromData()`/`fromDataSet()`:
 
 - **`allowPartial: true`** tolerates missing fields — the corresponding properties stay *uninitialized*, mirroring the partial extraction: a sparse `SELECT id, title` hydrates a sparse entity whose `toData()` produces exactly those fields back. Combined with `into:` it acts as a merge/patch — absent fields keep the target's current values. Beware that the strict default is what catches column-name typos; pair `allowPartial` with `rejectUnknown` to keep that protection.
-- **`rejectUnknown: true`** tightens the opposite direction: a data key that maps to no entity property throws (known keys cover all mapped properties including the non-writable ones, so a full-row roundtrip passes).
+- **`rejectUnknown: true`** tightens the opposite direction: a data key that maps to no entity property throws (known keys cover all backed mapped properties including the non-writable ones, so a full-row roundtrip passes; a key matching a virtual property's field is rejected like any unknown key, with a message pointing out the match).
 
 There is deliberately no factory-wide default for either switch — tolerance is a per-call decision, not a mode.
+
+### Asking what a partial entity carries
+
+A partially hydrated entity *is* the patch — but application code cannot just read its properties, because reading an uninitialized typed property is a fatal `Error`. For most cases PHP itself has the answer: `isset()` and the `??`/`??=` operators are safe on uninitialized typed properties, and for a **non-nullable** property they answer exactly:
+
+```php
+$favorite->position ??= $this->nextPosition($favorite->userId);  // fallback only when not set
+
+if (isset($entity->id)) { /* update */ } else { /* insert */ }   // upsert dispatch
+```
+
+Where the native idioms fall short, the hydrator answers — from the backing store, in property vocabulary:
+
+```php
+$hydrator->isInitialized($entity, 'note');       // true also for a stored null
+$hydrator->getInitializedPropertyNames($entity); // e.g. ['id', 'note'] — names only, never values
+```
+
+- **Nullable properties with patch semantics** — `isset()` conflates a stored `null` ("set the column to NULL") with uninitialized ("don't touch it"); `isInitialized()` keeps them apart.
+- **Entities with get hooks** — `isset()` invokes the hook, which crashes on an uninitialized backing; the hydrator reads the backing store via reflection and never invokes hooks, so no user code runs.
+- **Generic code** — a generic save/patch routine can branch on `getInitializedPropertyNames()` without touching a single value.
+
+An unknown property name throws a `MetadataException` — a typo is a bug, not "not set". So does asking about a virtual property: it has no stored state to ask about. The promise is precisely *the stored value is initialized*, not *reading is safe* — a get hook may still fail on its own uninitialized dependencies. Write get hooks to tolerate uninitialized state (or accept the consequences): the hydrator never forces partial entities on you — the strict default requires every field — it only enables them.
+
+> [!IMPORTANT]
+> `toData()` is not the way to ask this question. Its output is addressed to the storage driver — field names and format-encoded values. The point of the hydrator is that application code never speaks that vocabulary.
 
 ## Formats
 
