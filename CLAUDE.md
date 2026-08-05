@@ -384,8 +384,7 @@ class and the `Struct\` namespace to coexist); families live in
     answer (breaks field-vocabulary isolation); an
     `initializedProperties()` switch to exclude virtuals (ignoring
     virtuals is unconditional).
-- **0.6 follow-up** (implemented 2026-08-05, branch
-  `initialization-state`, version assigned at release) —
+- **0.6.1** (implemented 2026-08-05, branch `initialization-state`) —
   **`getInitializationState(Entity): InitializationState`** on
   Hydrator; `InitializationState` is a pure root-namespace enum with
   cases `Empty`/`Partial`/`Complete`. Aggregate stored-state
