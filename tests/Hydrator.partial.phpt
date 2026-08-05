@@ -73,23 +73,29 @@ test('rejectUnknown: a data key mapping to no property fails loudly', function (
     );
 });
 
-test('rejectUnknown knows fields of non-writable and virtual properties', function (): void {
+test('rejectUnknown knows fields of non-writable backed properties, rejects virtual ones', function (): void {
     $hydrator = new Hydrator(HookedEntity::class, NetteDatabase::class);
-
-    // secret/version are extraction-only, full_name is fully virtual — a
-    // roundtrip of a complete row must not trip the unknown-field check
-    $entity = $hydrator->fromData([
+    $row = [
         'id' => 1,
         'first_name' => 'Ada',
         'last_name' => 'Lovelace',
-        'names' => 'Ada Lovelace',
         'email' => 'ada@example.com',
         'secret' => 'ignored',
         'version' => 7,
-        'full_name' => 'ignored',
-    ], rejectUnknown: true);
+    ];
 
+    // secret/version are extraction-only backed fields — a roundtrip of
+    // a complete row must not trip the unknown-field check
+    $entity = $hydrator->fromData($row, rejectUnknown: true);
     Assert::same('Ada', $entity->firstName);
+
+    // a virtual property's field is foreign data like any unknown key,
+    // only the error message points out the match
+    Assert::exception(
+        fn() => $hydrator->fromData($row + ['full_name' => 'x'], rejectUnknown: true),
+        HydrationException::class,
+        "~Unknown fields 'full_name'.*virtual property.*fullName.*cannot process~",
+    );
 });
 
 test('allowPartial applies to structs as well: the field must be present for the instance rule', function (): void {

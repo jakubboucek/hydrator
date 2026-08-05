@@ -116,6 +116,7 @@ test('an unusable keyBy property throws immediately, before the source is touche
         [SimpleEntity::class, 'uuid', "~Unknown keyBy property 'uuid'~"],
         [Book::class, 'inStock', '~must be typed int or string~'],
         [HookedEntity::class, 'version', '~never hydrated~'],
+        [HookedEntity::class, 'names', '~never hydrated~'],
         [SimpleEntity::class, 'note', '~must not be nullable~'],
     ];
 
