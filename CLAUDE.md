@@ -411,7 +411,7 @@ class and the `Struct\` namespace to coexist); families live in
   bare `hasInitializedProperties()` predicate (plural is ambiguous
   between "any" and "all" — the enum removes the ambiguity
   structurally).
-- **Unreleased** (implemented 2026-08-08, branch `raw-json-struct`) —
+- **0.6.2** (implemented 2026-08-08, branch `raw-json-struct`) —
   **`RawJsonStruct`**: verbatim Struct over a foreign JSON document.
   Motivation: raw external JSON must be stored as-is while the struct
   maps only the fields of interest — `BaseStruct` drops unknown keys
