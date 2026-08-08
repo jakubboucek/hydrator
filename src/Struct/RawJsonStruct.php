@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use JakubBoucek\Hydrator\Exception\ValueException;
 use JakubBoucek\Hydrator\Struct;
 use JsonException;
+use LogicException;
 
 /**
  * Verbatim Struct over a foreign JSON document: the serialized string is
@@ -120,7 +121,7 @@ abstract class RawJsonStruct implements Struct
      */
     protected function hasValue(string|int|array $key): bool
     {
-        [$exists] = $this->seek($key);
+        [$exists] = $this->getField($key);
 
         return $exists;
     }
@@ -131,7 +132,7 @@ abstract class RawJsonStruct implements Struct
      */
     protected function getValue(string|int|array $key): mixed
     {
-        [$exists, $value] = $this->seek($key);
+        [$exists, $value] = $this->getField($key);
 
         if (!$exists) {
             throw new ValueException('Missing field ' . self::pathLabel($key) . ' in ' . static::class . '.');
@@ -152,7 +153,7 @@ abstract class RawJsonStruct implements Struct
      */
     protected function tryGetValue(string|int|array $key): mixed
     {
-        [, $value] = $this->seek($key);
+        [, $value] = $this->getField($key);
 
         return $value;
     }
@@ -286,7 +287,7 @@ abstract class RawJsonStruct implements Struct
      * @param string|int|array<string|int> $key
      * @return array{bool, mixed} [exists, value]
      */
-    private function seek(string|int|array $key): array
+    private function getField(string|int|array $key): array
     {
         $path = is_array($key) ? $key : [$key];
 
@@ -321,7 +322,11 @@ abstract class RawJsonStruct implements Struct
         }
 
         $data = json_decode($this->json, associative: true, flags: JSON_THROW_ON_ERROR);
-        assert(is_array($data)); // object root enforced at construction
+
+        if (!is_array($data)) {
+            $type = get_debug_type($data);
+            throw new LogicException("Expected JSON value as Array type, got '$type'.");
+        }
 
         return $this->decoded = $data;
     }
