@@ -320,11 +320,40 @@ $member->notes->add('Paid by wire', 'admin', new DateTimeImmutable());
 Rules of the mechanism:
 
 - **An instance always exists**: a `NULL` column hydrates into an empty struct, so struct properties are declared non-nullable and are writable at any time. Partial-update semantics stay untouched (an uninitialized property still produces no field).
-- **An empty struct is stored as `NULL`**, never as `'{}'` or `'[]'` — emptiness is defined by the struct itself (`toJson()` returning null).
+- **An empty struct is stored as `NULL`** — emptiness is defined by the struct itself (`toJson()` returning null). Declared-fields structs never store `'{}'` or `'[]'`; the verbatim `RawJsonStruct` treats a present empty document as a value (see below).
 - In the Json format structs travel as **nested arrays** and emptiness is explicit (`[]`).
 - Structs must be constructible without arguments, and the array representation must stay plain JSON-serializable data — no objects inside (dates as strings).
 
-Bundled implementations: `BaseStruct` (declared fields; unknown keys are dropped and nulls filtered — documented lossy traits), `DynamicStruct` (lossless free-form, an stdClass analogy), and the list-shaped showcases `TagListStruct` and `NoteListStruct` (`add…`/`remove…`, iteration, `toText()`).
+Bundled implementations: `BaseStruct` (declared fields; unknown keys are dropped and nulls filtered — documented lossy traits), `DynamicStruct` (lossless free-form, an stdClass analogy), `RawJsonStruct` (verbatim read-only document, see below) and the list-shaped showcases `TagListStruct` and `NoteListStruct` (`add…`/`remove…`, iteration, `toText()`).
+
+### Verbatim documents: RawJsonStruct
+
+When a column carries a foreign JSON document — a webhook payload, an API response — the document must be stored *as-is* while the application reads only the fields it cares about. `BaseStruct` drops unknown keys, and even the key-lossless `DynamicStruct` re-encodes on the way out, which changes number representation (`1e5` → `100000.0`, integers beyond 2<sup>53</sup> lose precision), escaping, and duplicate keys. `RawJsonStruct` keeps the JSON string itself as the single source of truth: `toJson()` returns it byte-exact, never re-encoded; the decoded document is only a lazy read-only cache built on first read.
+
+Subclasses map the fields of interest through a protected read API and expose their own typed getters:
+
+```php
+use JakubBoucek\Hydrator\Struct\RawJsonStruct;
+
+class WebhookPayload extends RawJsonStruct
+{
+    public function getEventName(): string
+    {
+        return $this->getString('event');                       // strict: missing/null throws
+    }
+
+    public function getRepositoryName(): ?string
+    {
+        return $this->tryGetString(['repository', 'full_name']); // tolerant: missing/null → null
+    }
+}
+```
+
+- **Read-only by design.** Mutating a foreign document would degrade the untouched guarantee from byte level to data level; a future write path is `toArray()` → modify → `fromArray()` (a new instance, a new string).
+- **Strict and tolerant twins.** `getValue()`/`getString()`/`getInt()`/`getFloat()`/`getBool()`/`getArray()` are non-null and throw `ValueException` on a missing or null field; the `tryGet*` twins return null for missing-or-null — the `$data['a'][0] ?? null` analogy. Both throw on a present value of the wrong type: `getFloat` accepts an int (JSON has a single number type), `getInt` rejects a fraction (truncation would be a silent cast). `hasValue()` has `array_key_exists` semantics — an explicit JSON null is a *present* field, the only way to tell missing from null.
+- **Nested fields** are addressed by an array path: `$this->getInt(['items', 0, 'quantity'])`. No dot-notation — a foreign key may itself contain a dot.
+- **Object root only.** `fromJson()` validates the document (`json_validate`) and requires a `{` root; `fromArray()` mirrors that by rejecting lists.
+- **Emptiness is presence of the document, not its content**: a `NULL` column hydrates into an empty, fully readable instance and renders back as `NULL`, while a present `'{}'` is a value and roundtrips verbatim.
 
 ## Custom types
 
