@@ -16,9 +16,11 @@ use JakubBoucek\Hydrator\Exception\ValueException;
  * Two representations, chosen by the format:
  *
  * - **database pair** (`fromJson`/`toJson`) — a JSON string. Null means an
- *   empty struct on both sides: an empty struct is stored as NULL (never as
- *   `{}` or `[]`), and a NULL column hydrates into an empty instance — a
- *   struct property always holds an instance, so it is writable at any time.
+ *   empty struct on both sides: a struct with nothing to store renders as
+ *   NULL (declared-fields structs never store `{}` or `[]`; the verbatim
+ *   RawJsonStruct treats a present empty document as a value and preserves
+ *   it), and a NULL column hydrates into an empty instance — a struct
+ *   property always holds an instance, so it is safe to use at any time.
  * - **array pair** (`fromArray`/`toArray`) — a plain JSON-serializable
  *   key→value array or list, possibly nested, with no objects inside
  *   (dates as strings). Used by the Json format; emptiness is explicit
