@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use JakubBoucek\Hydrator\Entity;
 use JakubBoucek\Hydrator\Struct\DynamicStruct;
+use JakubBoucek\Hydrator\Struct\RawJsonStruct;
 use JakubBoucek\Hydrator\Format\NetteDatabase;
 use JakubBoucek\Hydrator\Hydrator;
 use JakubBoucek\Hydrator\Tests\Fixtures\Parcel;
@@ -16,7 +18,33 @@ use Tester\Assert;
 
 require __DIR__ . '/bootstrap.php';
 
+class WebhookPayloadStruct extends RawJsonStruct
+{
+    public function getEventName(): string
+    {
+        return $this->getString('event');
+    }
+
+    public function getRepositoryName(): ?string
+    {
+        return $this->tryGetString(['repository', 'full_name']);
+    }
+}
+
+class WebhookEvent implements Entity
+{
+    public int $id;
+    public string $label;
+    public WebhookPayloadStruct $payload;
+}
+
 const TABLE = 'parcel';
+const RAW_TABLE = 'webhook_event';
+
+// everything a decode/encode roundtrip would destroy: formatted numbers,
+// unicode escapes, key order, inner whitespace
+const RAW_PAYLOAD = '{"event": "push",  "repository": {"full_name": "jakubboucek/hydrator", "stars": 1e3},'
+    . ' "amount": 12.50, "note": "příliš žluťoučký", "mark": "\u010d"}';
 
 $pdo = Mariadb::freshDatabase('struct');
 $pdo->exec('DROP TABLE IF EXISTS ' . TABLE);
@@ -32,6 +60,16 @@ $pdo->exec('INSERT INTO ' . TABLE . " (label, contact, tags, notes, meta) VALUES
     ('full', '{\"email\":\"ada@example.com\"}', '[\"vip\",\"legacy\"]',
      '[{\"text\":\"Zaplaceno\",\"author\":\"admin\",\"date\":\"2026-07-30 10:00:00\"}]', '{\"source\":\"import\",\"batch\":7}'),
     ('empty', NULL, NULL, NULL, NULL)");
+
+$pdo->exec('DROP TABLE IF EXISTS ' . RAW_TABLE);
+$pdo->exec('CREATE TABLE ' . RAW_TABLE . ' (
+    id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    label VARCHAR(100) NOT NULL,
+    payload JSON NULL
+) ENGINE=InnoDB CHARSET=utf8mb4');
+$insertRaw = $pdo->prepare('INSERT INTO ' . RAW_TABLE . ' (label, payload) VALUES (?, ?)');
+$insertRaw->execute(['full', RAW_PAYLOAD]);
+$insertRaw->execute(['empty', null]);
 
 $connection = new Connection(Mariadb::dsnFor('struct'), Mariadb::user(), Mariadb::password(), [
     'convertBoolean' => true,
@@ -101,4 +139,47 @@ test('DynamicStruct keeps unknown keys through the whole DB roundtrip', function
 
     $data = $hydrator->toData($parcel);
     Assert::same('{"source":"import","batch":7}', $data['meta']);
+});
+
+$rawHydrator = new Hydrator(WebhookEvent::class, NetteDatabase::class, new DateTimeZone('Europe/Prague'));
+
+test('RawJsonStruct: the foreign document survives the whole DB roundtrip byte-exact', function () use ($pdo, $explorer, $rawHydrator): void {
+    foreach ([
+        $explorer->table(RAW_TABLE)->get(1),
+        $pdo->query('SELECT * FROM ' . RAW_TABLE . ' WHERE id = 1')->fetch(PDO::FETCH_ASSOC),
+    ] as $row) {
+        $event = $rawHydrator->fromData($row);
+
+        Assert::same('push', $event->payload->getEventName());
+        Assert::same('jakubboucek/hydrator', $event->payload->getRepositoryName());
+
+        // mapped reads did not re-encode anything
+        Assert::same(RAW_PAYLOAD, $rawHydrator->toData($event)['payload']);
+    }
+
+    // write the extracted payload back and prove it byte-exact straight in the
+    // database — MariaDB JSON is a LONGTEXT alias and stores the string
+    // verbatim (MySQL's binary JSON would normalize it; a DB property, not ours)
+    $data = $rawHydrator->toData($rawHydrator->fromData($explorer->table(RAW_TABLE)->get(1)));
+    unset($data['id']);
+    $inserted = $explorer->table(RAW_TABLE)->insert($data);
+    assert($inserted instanceof Nette\Database\Table\ActiveRow);
+
+    $raw = $pdo->query('SELECT payload FROM ' . RAW_TABLE . " WHERE id = {$inserted->getPrimary()}")->fetchColumn();
+    Assert::same(RAW_PAYLOAD, $raw);
+});
+
+test('RawJsonStruct: NULL column means an empty, fully readable document', function () use ($pdo, $explorer, $rawHydrator): void {
+    $event = $rawHydrator->fromData($explorer->table(RAW_TABLE)->get(2));
+
+    Assert::true($event->payload->isEmpty());
+    Assert::null($event->payload->getRepositoryName());
+
+    $data = $rawHydrator->toData($event);
+    unset($data['id']);
+    $inserted = $explorer->table(RAW_TABLE)->insert($data);
+    assert($inserted instanceof Nette\Database\Table\ActiveRow);
+
+    $raw = $pdo->query('SELECT payload FROM ' . RAW_TABLE . " WHERE id = {$inserted->getPrimary()}")->fetchColumn();
+    Assert::null($raw);
 });

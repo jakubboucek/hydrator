@@ -411,6 +411,60 @@ class and the `Struct\` namespace to coexist); families live in
   bare `hasInitializedProperties()` predicate (plural is ambiguous
   between "any" and "all" — the enum removes the ambiguity
   structurally).
+- **Unreleased** (implemented 2026-08-08, branch `raw-json-struct`) —
+  **`RawJsonStruct`**: verbatim Struct over a foreign JSON document.
+  Motivation: raw external JSON must be stored as-is while the struct
+  maps only the fields of interest — `BaseStruct` drops unknown keys
+  and `DynamicStruct` is lossless only at key level (a decode/encode
+  roundtrip still changes number representation — `1e5` → `100000.0`,
+  ints beyond 2^53 lose precision — escaping, and duplicate keys);
+  the only honest as-is guarantee is to never touch the string.
+  Design (dialogue 2026-08-08):
+  - **The JSON string is the single source of truth**; the decoded
+    array is a lazy read-only cache built on first read — `toJson()`
+    returns the stored string byte-exact, never re-encodes. A future
+    write path goes `toArray()` → modify → `fromArray()` (new
+    instance, new string); the API is deliberately **read-only** for
+    now (mutating a foreign document would degrade the untouched
+    guarantee from byte-level to data-level and blur its provenance).
+  - **Object root only**: `fromJson()` validates with `json_validate()`
+    (eager — syntax errors fail loudly at hydration with engine
+    context; materialization stays lazy) and then requires the first
+    non-whitespace char to be `{` (RFC 8259 allows leading ws).
+    `fromArray()` mirrors it by rejecting lists (`[]` means empty).
+    Relaxing to `[` roots later is additive; tightening would not be.
+  - **Emptiness is presence of the document, not its content**:
+    `fromJson(null)` / `fromArray([])` → empty instance, `toJson()` →
+    null; a present `'{}'` is a value and roundtrips verbatim —
+    a deliberate narrowing of the "empty struct stored as NULL" rule
+    (absent vs. empty document is the same distinction as
+    uninitialized vs. null, which the library exists to preserve).
+    `isEmpty()` = "holds no document". The empty instance is fully
+    readable (getters null/throw, `hasValue()` false, `toArray()` `[]`).
+  - **Protected read API** (subclasses expose typed public getters,
+    verb-first convention): `hasValue()` with `array_key_exists`
+    semantics (explicit JSON null is present — the only way to tell
+    missing from null); strict `getValue()`/`getString()`/`getInt()`/
+    `getFloat()`/`getBool()`/`getArray()` are non-null and throw
+    `ValueException` on missing/null; `tryGet*` twins return null for
+    missing-or-null (the `$data['a'][0] ?? null` analogy) but still
+    throw on a present value of the wrong type. `getFloat` accepts int
+    (JSON has one number type), `getInt` rejects float (truncation
+    would be a silent cast). `getValue` (not `getField`) — reserved
+    forward compat for a future rich result (exists/type/value).
+    Key is `string|int|array<string|int>` — a path is one array
+    argument, deliberately NOT variadic (forward compat: variadic
+    would block any later trailing parameter) and NOT dot-notation
+    (a foreign key may contain a dot, no escaping exists).
+  Rejected on the way (do not re-propose): a JSONPath/JSON Pointer
+  dependency (PHP core has none; the library is runtime
+  dependency-free and traversal is a few lines); a preserve-raw
+  switch on `BaseStruct` (two opposite semantics in one class);
+  extending `DynamicStruct` (eager decode, R/W invites mutating the
+  foreign document, not byte-lossless); mapping the column as
+  `?string` (the baseline idiom — verbatim but untyped, app parses
+  manually); required non-null `require*` variants in the base
+  (additive later; `?? throw` in the subclass getter covers it).
 
 ## Future candidates (analyzed, not scheduled)
 
